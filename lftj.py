@@ -67,8 +67,6 @@ class Leapfrog(Iter):
     # Returns self.done().
     def next(self):
         assert not self.finished
-        # FIXME XXX TODO: INCORRECT.
-        # 2025-04-28 I don't see how this is wrong?
         self.finished = self.iters[self.idx].next()
         if self.finished: return True
         self.rotate()
