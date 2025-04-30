@@ -237,15 +237,6 @@ class Trie:
                 print(f"{prefix}{key}", file=buf)
                 subtrie.show(buf, prefix + "   ")
 
-# Trie of
-# 3
-#    "a": 13
-#    "bc": 5
-#    "d": 7
-# 4
-#    "john"
-# 7
-
 class TrieIterator(TrieIter):
     def __init__(self, trie: Trie):
         self.trie = trie
@@ -273,7 +264,14 @@ class TrieIterator(TrieIter):
         return not self.keys
 
     def seek(self, key):
-        raise NotImplementedError
+        # use InvertOrder since keys are in reverse order
+        posn = bisect.bisect_right(
+            self.keys,
+            InvertOrder(key),
+            key=lambda x: InvertOrder(x),
+        )
+        self.keys = self.keys[:posn]
+        return not self.keys
 
     def enter(self):
         if self.depth() == -1:
@@ -292,6 +290,23 @@ class TrieIterator(TrieIter):
             self.node, self.keys = self.stack.pop()
         else:
             self.stack = None
+
+from dataclasses import dataclass
+@dataclass(slots=True)
+class InvertOrder:
+    value: object
+    def __gt__(self, other):
+        assert isinstance(other, InvertOrder)
+        return other.value.__gt__(self.value)
+    def __lt__(self, other):
+        assert isinstance(other, InvertOrder)
+        return other.value.__lt__(self.value)
+    def __le__(self, other):
+        assert isinstance(other, InvertOrder)
+        return other.value.__le__(self.value)
+    def __ge__(self, other):
+        assert isinstance(other, InvertOrder)
+        return other.value.__ge__(self.value)
 
 
 # Trie iterator for a sorted list of tuples
