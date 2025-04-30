@@ -1,3 +1,4 @@
+import io
 import sys
 import bisect
 
@@ -109,9 +110,10 @@ class TrieIter(Iter):
 class TrieJoin(TrieIter):
     # eg: TrieJoin((x,0,2), (y,1,2), (z,0))
     #
-    # this means x is a TrieIter that we use at levels 0 & 2
-    # y we use at levels 1 & 2
-    # z we use at level 0 only
+    # This means x,y,z are TrieIters, and
+    # we use x at levels 0 & 2
+    #        y at levels 1 & 2
+    #        z at level  0
     #
     # Level count always starts at 0.
     def __init__(self, *iter_levels):
@@ -127,7 +129,7 @@ class TrieJoin(TrieIter):
             for l in levels:
                 self.iters[l].append(it)
 
-    def depth(self): return self.level
+    def depth(self): return self.levelp
     def max_depth(self): return len(self.iters)
 
     def enter(self):
@@ -178,6 +180,118 @@ class TrieJoin(TrieIter):
             print(f"active {' '.join(names)}")
         for x, it in iters.items():
             it.debug_dump(iter_names[x], file=file)
+
+
+# An actual trie.
+class Trie:
+    def __init__(self, data = [], depth = None):
+        if depth is None:
+            assert data
+            depth = len(data[0])
+        else:
+            assert isinstance(depth, int)
+        assert all(len(x) == depth for x in data)
+        self.depth = depth
+        # If depth == 1, then data maps keys to counts.
+        # Otherwise it maps keys to subtries.
+        self.data = {}
+        for entry in data:
+            self.insert(entry)
+
+    def insert(self, key):
+        depth = len(key)
+        assert depth == self.depth
+        assert depth > 0
+        k = key[0]
+        if depth == 1:
+            self.data[k] = self.data.get(k,0) + 1
+            return
+        trie = self.data.get(k)
+        if trie is None:
+            trie = self.data[k] = Trie(depth = depth-1)
+        trie.insert(key[1:])
+
+    def remove(self, key):
+        assert len(key) == self.depth
+        k = key[0]
+        if k not in self.data: return
+        if depth > 1:
+            self.data[k].remove(key[1:])
+            return
+        # Base case, depth=1
+        n = self.data.get(k,0)
+        if n == 0: return
+        elif n == 1: del self.data[k]
+        elif n > 1: self.data[k] = n - 1
+
+    def iterator(self): return TrieIterator(self)
+    def __iter__(self): return trie_iterate(self.iterator())
+    def __repr__(self): return f"Trie({list(self)})"
+
+    def show(self, buf=sys.stdout, prefix=""):
+        for key, subtrie in self.data.items():
+            if self.depth == 1:
+                for _ in range(subtrie): # subtrie is actually a count
+                    print(f"{prefix}{key}", file=buf)
+            else:
+                print(f"{prefix}{key}", file=buf)
+                subtrie.show(buf, prefix + "   ")
+
+# Trie of
+# 3
+#    "a": 13
+#    "bc": 5
+#    "d": 7
+# 4
+#    "john"
+# 7
+
+class TrieIterator(TrieIter):
+    def __init__(self, trie: Trie):
+        self.trie = trie
+        self.stack = None
+
+    def depth(self):
+        return len(self.stack) if self.stack is not None else -1
+
+    def max_depth(self): return self.trie.depth
+
+    def done(self):
+        assert self.depth() >= 0
+        return not self.keys
+
+    def key(self):
+        assert self.depth() >= 0
+        assert not self.done()
+        return self.keys[-1]
+
+    def next(self):
+        assert self.depth() >= 0
+        assert not self.done()
+        assert self.keys
+        self.keys.pop()
+        return not self.keys
+
+    def seek(self, key):
+        raise NotImplementedError
+
+    def enter(self):
+        if self.depth() == -1:
+            self.stack = []
+            self.node = self.trie
+        else:
+            assert not self.done()
+            self.stack.append((self.node, self.keys))
+            self.node = self.node.data[self.key()]
+        self.keys = list(self.node.data)
+        self.keys.reverse()
+
+    def leave(self):
+        assert self.depth() >= 0
+        if self.stack:
+            self.node, self.keys = self.stack.pop()
+        else:
+            self.stack = None
 
 
 # Trie iterator for a sorted list of tuples
@@ -339,15 +453,17 @@ def trie_iterate(iter: TrieIter, debug=False):
     def p(*a,**kw):
         if not debug: return
         print(*a,**kw)
-    def debug_dump():
-        if debug: iter.debug_dump()
+    def debug_dump(*a,**kw):
+        if debug: iter.debug_dump(*a,**kw)
 
     max_depth = iter.max_depth()
     p(f"max_depth: {max_depth}")
     p("entering at ()")
     iter.enter()
     debug_dump()
-    if iter.done(): return
+    if iter.done():
+        iter.leave()
+        return
 
     key = ()
     while True:
@@ -369,7 +485,9 @@ def trie_iterate(iter: TrieIter, debug=False):
 
         # As long as there are no more keys in this level, ascend.
         while iter.done():
-            if key == (): return
+            if key == ():
+                iter.leave()
+                return
             p(f"leaving to {key}")
             prev_key = key
             key = key[:-1]
@@ -424,8 +542,18 @@ ac = [('a', "one"), ('b', "deux")]
 abt = SortedListTrie(2, ab)
 bct = SortedListTrie(2, bc)
 act = SortedListTrie(2, ac)
-tj = TrieJoin((abt, 0, 1), (bct, 1, 2), (act, 0, 2))
-assert list(trie_iterate(tj)) == [('a', 1, "one"), ('b', 2, "deux")]
+tj_triangle = TrieJoin((abt, 0, 1), (bct, 1, 2), (act, 0, 2))
+assert list(trie_iterate(tj_triangle)) == [('a', 1, "one"), ('b', 2, "deux")]
 
-# BUG: I'm not generating ('b', 2, "deux")!
+tj_bc_ac = TrieJoin((bct, 1, 2), (act, 0, 2))
+assert list(trie_iterate(tj_bc_ac)) == [('a', 1, "one"), ('b', 2, "deux")]
 
+tj_ab_bc = TrieJoin((abt, 0, 1), (bct, 1, 2))
+expect_ab_bc = [
+    ('a', 1, "one"), ('a', 1, "wun"),
+    ('a', 2, "deux"), ('a', 2, "two"),
+    ('b', 1, "one"), ('b', 1, "wun"),
+    ('b', 2, "deux"), ('b', 2, "two"),
+]
+expect_ab_bc.sort()
+assert list(trie_iterate(tj_ab_bc)) == expect_ab_bc
