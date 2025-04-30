@@ -277,6 +277,7 @@ class TrieIterator(TrieIter):
             self.stack.append((self.node, self.keys, self.posn))
             self.node = self.node.data[self.key()]
         self.keys = list(self.node.data)
+        self.keys.sort()
         self.posn = 0
 
     def leave(self):
