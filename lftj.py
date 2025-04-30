@@ -275,6 +275,9 @@ class TrieIterator(TrieIter):
             self.stack.append((self.node, self.keys, self.posn))
             self.node = self.node.data[self.key()]
         self.keys = list(self.node.data)
+        # sort() is expensive but at least we only do it once per level. Could
+        # instead alter Trie to maintain a sorted list of keys, but then
+        # insert/delete would be slower. Meh.
         self.keys.sort()
         self.posn = 0
 
