@@ -249,29 +249,24 @@ class TrieIterator(TrieIter):
 
     def done(self):
         assert self.depth() >= 0
-        return not self.keys
+        return self.posn >= len(self.keys)
 
     def key(self):
         assert self.depth() >= 0
         assert not self.done()
-        return self.keys[-1]
+        return self.keys[self.posn]
 
     def next(self):
         assert self.depth() >= 0
         assert not self.done()
-        assert self.keys
-        self.keys.pop()
-        return not self.keys
+        self.posn += 1
+        return self.done()
 
     def seek(self, key):
-        # use InvertOrder since keys are in reverse order
-        posn = bisect.bisect_right(
-            self.keys,
-            InvertOrder(key),
-            key=lambda x: InvertOrder(x),
-        )
-        self.keys = self.keys[:posn]
-        return not self.keys
+        assert self.depth() >= 0
+        assert not self.done()
+        self.posn = bisect.bisect_left(self.keys, key, self.posn)
+        return self.done()
 
     def enter(self):
         if self.depth() == -1:
@@ -279,34 +274,17 @@ class TrieIterator(TrieIter):
             self.node = self.trie
         else:
             assert not self.done()
-            self.stack.append((self.node, self.keys))
+            self.stack.append((self.node, self.keys, self.posn))
             self.node = self.node.data[self.key()]
         self.keys = list(self.node.data)
-        self.keys.reverse()
+        self.posn = 0
 
     def leave(self):
         assert self.depth() >= 0
         if self.stack:
-            self.node, self.keys = self.stack.pop()
+            self.node, self.keys, self.posn = self.stack.pop()
         else:
             self.stack = None
-
-from dataclasses import dataclass
-@dataclass(slots=True)
-class InvertOrder:
-    value: object
-    def __gt__(self, other):
-        assert isinstance(other, InvertOrder)
-        return other.value.__gt__(self.value)
-    def __lt__(self, other):
-        assert isinstance(other, InvertOrder)
-        return other.value.__lt__(self.value)
-    def __le__(self, other):
-        assert isinstance(other, InvertOrder)
-        return other.value.__le__(self.value)
-    def __ge__(self, other):
-        assert isinstance(other, InvertOrder)
-        return other.value.__ge__(self.value)
 
 
 # Trie iterator for a sorted list of tuples
