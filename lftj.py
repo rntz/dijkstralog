@@ -2,7 +2,7 @@ import io
 import sys
 import bisect
 
-# ----- ITERATORS -----
+# ----- FORWARD-SEEKABLE ITERATORS -----
 class Iter:
     def done(self): pass        # returns True iff done
     # advances, returns self.done()
