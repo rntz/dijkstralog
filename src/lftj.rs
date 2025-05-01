@@ -6,6 +6,10 @@ pub trait Seek: Iterator {
     fn advance(&mut self);
     // seek() does not require !self.empty().
     fn seek(&mut self, key: Self::Item);
+
+    fn here(&self) -> Option<Self::Item> {
+        if self.empty() { None } else { Some(self.key()) }
+    }
 }
 
 // an implementation of Iterator::next() in terms of Seek::{done,key,advance}.
@@ -22,6 +26,7 @@ impl<S: Seek + ?Sized> Seek for &mut S {
     #[inline] fn key(&self) -> S::Item { (**self).key() }
     #[inline] fn advance(&mut self) { (**self).advance() }
     #[inline] fn seek(&mut self, key: S::Item) { (**self).seek(key) }
+    #[inline] fn here(&self) -> Option<S::Item> { (**self).here() }
 }
 
 
@@ -114,6 +119,11 @@ impl<S: Seek> Seek for Leapfrog<S> where S::Item: Ord {
         debug_assert!(!self.empty());
         let (index, iters) = self.0.as_ref().unwrap();
         iters[*index].key()
+    }
+
+    fn here(&self) -> Option<S::Item> {
+        let (index, iters) = self.0.as_ref()?;
+        Some(iters[*index].key())
     }
 
     fn advance(&mut self) {
