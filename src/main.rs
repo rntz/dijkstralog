@@ -1,11 +1,24 @@
 #![allow(dead_code, unused_variables)]
 
-mod utils;
 mod lftj;
+mod utils;
+
+use lftj::*;
 
 fn main() {
     println!("Hello, world!");
-    let xs: Vec<usize> = vec![1, 2, 3];
-    let it = lftj::VectorSeek::new(xs.as_slice());
-    
+
+    let primes: Vec<usize> = vec![2, 3, 5, 7, 11];
+    let odds = vec![1, 3, 5, 7, 9, 11];
+    assert!(primes.is_sorted());
+    assert!(odds.is_sorted());
+
+    let mut iter_primes = SliceSeek::new(primes.as_slice());
+    let mut iter_odd = SliceSeek::new(odds.as_slice());
+
+    let lf = Leapfrog::new(vec![&mut iter_primes, &mut iter_odd]);
+    // print some odd primes
+    for x in lf {
+        println!("{x}");
+    }
 }
