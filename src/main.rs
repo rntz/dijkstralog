@@ -16,7 +16,10 @@ fn main() {
     let mut iter_primes = SliceSeek::new(primes.as_slice());
     let mut iter_odd = SliceSeek::new(odds.as_slice());
 
-    let lf = Leapfrog::new(vec![&mut iter_primes, &mut iter_odd]);
+    let x: &mut dyn Seek<Item = &usize> = &mut iter_primes;
+    let y: &mut dyn Seek<Item = &usize> = &mut iter_odd;
+
+    let lf = Leapfrog::new(vec![x, y]);
     // print some odd primes
     for x in lf {
         println!("{x}");

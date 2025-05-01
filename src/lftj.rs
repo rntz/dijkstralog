@@ -1,10 +1,10 @@
 // ---------- SEEKABLE ITERATORS ----------
 pub trait Seek: Iterator {
     fn done(&self) -> bool;
-    fn seek(&mut self, key: Self::Item);
     // precondition for key() and advance(): !self.done()
     fn key(&self) -> Self::Item;
     fn advance(&mut self);
+    fn seek(&mut self, key: Self::Item); // does not require !self.done()
 }
 
 // an implementation of Iterator::next() in terms of Seek::{done,key,advance}.
@@ -13,6 +13,14 @@ fn seek_next<T: Seek>(this: &mut T) -> Option<T::Item> {
     let elem = this.key();
     this.advance();
     return Some(elem);
+}
+
+// ensure (&mut dyn Seek) implements Seek
+impl<S: Seek + ?Sized> Seek for &mut S {
+    #[inline] fn done(&self) -> bool { (**self).done() }
+    #[inline] fn key(&self) -> S::Item { (**self).key() }
+    #[inline] fn advance(&mut self) { (**self).advance() }
+    #[inline] fn seek(&mut self, key: S::Item) { (**self).seek(key) }
 }
 
 
@@ -58,15 +66,15 @@ impl<'a, T: Ord> Seek for SliceSeek<'a, T> {
 
 
 // ---------- LEAPFROG INTERSECTION ----------
-pub struct Leapfrog<'a, K> {
-    iters: Vec<&'a mut dyn Seek<Item=K>>,
+pub struct Leapfrog<Iter> {
+    iters: Vec<Iter>,
     idx: Option<u8>,            // better have less than 256 iterators!
     // idx: None means we are done.
 }
 
-impl<'a, K: Ord> Leapfrog<'a, K> {
+impl<I: Seek>  Leapfrog<I> where I::Item: Ord {
     // shouldn't I be able to implement this for any IntoIter thing?
-    pub fn new(mut iters: Vec<&'a mut dyn Seek<Item=K>>) -> Self {
+    pub fn new(mut iters: Vec<I>) -> Self {
         // Intersecting nothing would produce "universal" relation, which I
         // can't represent efficiently.
         assert!(0 < iters.len());
@@ -86,7 +94,7 @@ impl<'a, K: Ord> Leapfrog<'a, K> {
         let mut idx = self.idx.unwrap() as usize;
         // rust has no modular arithmetic primitive, ugh.
         let n = self.iters.len();
-        let mut hi: K = self.iters[if idx>0 {idx} else {n} - 1].key();
+        let mut hi: I::Item = self.iters[if idx>0 {idx} else {n} - 1].key();
         loop {
             let iter = &mut self.iters[idx];
             if hi == iter.key() { // all iters at same key
@@ -104,15 +112,15 @@ impl<'a, K: Ord> Leapfrog<'a, K> {
     }
 }
 
-impl<'a, K: Ord> Iterator for Leapfrog<'a, K> {
-    type Item = K;
-    fn next(&mut self) -> Option<K> { seek_next(self) }
+impl<S: Seek> Iterator for Leapfrog<S> where S::Item: Ord {
+    type Item = S::Item;
+    fn next(&mut self) -> Option<S::Item> { seek_next(self) }
 }
 
-impl<'a, K: Ord> Seek for Leapfrog<'a, K> {
+impl<S: Seek> Seek for Leapfrog<S> where S::Item: Ord {
     fn done(&self) -> bool { self.idx.is_none() }
 
-    fn key(&self) -> K {
+    fn key(&self) -> S::Item {
         debug_assert!(!self.done());
         self.iters[self.idx.unwrap() as usize].key()
     }
@@ -127,7 +135,7 @@ impl<'a, K: Ord> Seek for Leapfrog<'a, K> {
         self.search();
     }
 
-    fn seek(&mut self, key: K) {
+    fn seek(&mut self, key: S::Item) {
         let idx = self.idx.unwrap() as usize;
         let iter = &mut self.iters[idx];
         iter.seek(key);
