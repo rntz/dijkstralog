@@ -131,8 +131,8 @@ impl<S: Seek> Seek for Leapfrog<S> where S::Item: Ord {
         let (index, mut iters) = self.0.take().unwrap();
         let iter = &mut iters[index];
         iter.advance();
-        self.0 = if iter.empty() { None } else {
-            leapfrog_search((index+1) % iters.len(), iters)
+        if !iter.empty() {
+            self.0 = leapfrog_search((index+1) % iters.len(), iters)
         }
     }
 
