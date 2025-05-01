@@ -4,7 +4,10 @@ pub trait Seek: Iterator {
     // precondition for key() and advance(): !self.done()
     fn key(&self) -> Self::Item;
     fn advance(&mut self);
-    fn seek(&mut self, key: Self::Item); // does not require !self.done()
+    // seek() does not require !self.done(). Note that if seek() returns
+    // Some(item), then next() will return Some(item) again; we DO NOT advance
+    // past the item we return.
+    fn seek(&mut self, key: Self::Item) -> Option<Self::Item>;
 }
 
 // an implementation of Iterator::next() in terms of Seek::{done,key,advance}.
@@ -20,7 +23,7 @@ impl<S: Seek + ?Sized> Seek for &mut S {
     #[inline] fn done(&self) -> bool { (**self).done() }
     #[inline] fn key(&self) -> S::Item { (**self).key() }
     #[inline] fn advance(&mut self) { (**self).advance() }
-    #[inline] fn seek(&mut self, key: S::Item) { (**self).seek(key) }
+    #[inline] fn seek(&mut self, key: S::Item) -> Option<S::Item> { (**self).seek(key) }
 }
 
 
@@ -56,58 +59,76 @@ impl<'a, T: Ord> Seek for SliceSeek<'a, T> {
         self.posn += 1;
     }
 
-    fn seek(&mut self, key: &T) {
+    fn seek(&mut self, key: &T) -> Option<&'a T> {
         debug_assert!(self.posn <= self.elems.len());
         self.posn += self.elems[self.posn..].partition_point(|x| x < key);
         debug_assert!(self.posn <= self.elems.len());
-        debug_assert!(self.posn == self.elems.len() || key <= &self.elems[self.posn]);
+        if self.posn == self.elems.len() { None }
+        else {
+            let elem = &self.elems[self.posn];
+            debug_assert!(key <= elem);
+            Some(elem)
+        }
     }
 }
 
 
 // ---------- LEAPFROG INTERSECTION ----------
-pub struct Leapfrog<Iter> {
-    iters: Vec<Iter>,
-    idx: Option<u8>,            // better have less than 256 iterators!
-    // idx: None means we are done.
+pub enum Leapfrog<Iter> {
+    Stop,
+    Go { index: usize, iters: Vec<Iter> },
 }
 
-impl<I: Seek>  Leapfrog<I> where I::Item: Ord {
+use Leapfrog::{Stop,Go};
+
+impl<I: Seek> Leapfrog<I> where I::Item: Ord {
     // shouldn't I be able to implement this for any IntoIter thing?
     pub fn new(mut iters: Vec<I>) -> Self {
         // Intersecting nothing would produce "universal" relation, which I
         // can't represent efficiently.
         assert!(0 < iters.len());
-        assert!(iters.len() <= u8::MAX.into()); // too many iterators to fit in a u8
 
         // If any iterator is already done, so are we.
-        if iters.iter().any(|x| x.done()) { return Leapfrog { iters, idx: None } }
+        if iters.iter().any(|x| x.done()) { return Stop }
 
         iters.sort_by_key(|it| it.key());
-        let mut lf = Leapfrog { iters, idx: Some(0) };
+        let mut lf = Go { index: 0, iters };
         lf.search();
         lf
     }
 
-    fn search(&mut self) {
-        debug_assert!(!self.done());
-        let mut idx = self.idx.unwrap() as usize;
+    fn unwrap(&self) -> (usize, &Vec<I>) {
+        match self {
+            Stop => panic!("Leapfrog::look() called but iterator is done"),
+            Go { index, iters } => (*index, iters),
+        }
+    }
+
+    fn take(&mut self) -> (usize, Vec<I>) {
+        match std::mem::replace(self, Stop) {
+            Stop => panic!("Leapfrog::take() called but iterator is done"),
+            Go { index, iters } => (index, iters)
+        }
+    }
+
+    fn search(&mut self) -> Option<I::Item> {
+        let (mut index, mut iters) = self.take();
         // rust has no modular arithmetic primitive, ugh.
-        let n = self.iters.len();
-        let mut hi: I::Item = self.iters[if idx>0 {idx} else {n} - 1].key();
+        let n = iters.len();
+        let mut hi = iters[if index>0 {index-1} else {n-1}].key();
         loop {
-            let iter = &mut self.iters[idx];
+            let iter = &mut iters[index];
             if hi == iter.key() { // all iters at same key
-                self.idx = Some(idx as u8);
-                return;
+                *self = Go { index, iters };
+                return Some(hi);
             }
             // Hm, if seek() returned an Option<K> this would work fine? but
             // we'd have to get the same value again when we called next(); we
             // don't want to advance _past_ the element.
             iter.seek(hi);
-            if iter.done() { self.idx = None; return; }
+            if iter.done() { *self = Stop; return None; }
             hi = iter.key();
-            idx = (idx + 1) % n;
+            index = (index + 1) % n;
         }
     }
 }
@@ -118,29 +139,41 @@ impl<S: Seek> Iterator for Leapfrog<S> where S::Item: Ord {
 }
 
 impl<S: Seek> Seek for Leapfrog<S> where S::Item: Ord {
-    fn done(&self) -> bool { self.idx.is_none() }
+    #[inline]
+    fn done(&self) -> bool {
+        match self { Stop => true, Go {..} => false }
+    }
 
     fn key(&self) -> S::Item {
         debug_assert!(!self.done());
-        self.iters[self.idx.unwrap() as usize].key()
+        let (index, iters) = self.unwrap();
+        iters[index].key()
     }
 
     fn advance(&mut self) {
         debug_assert!(!self.done());
-        let idx = self.idx.unwrap() as usize;
-        let iter = &mut self.iters[idx];
+        let (mut index, mut iters) = self.take();
+        let iter = &mut iters[index];
         iter.advance();
-        if iter.done() { self.idx = None; return; }
-        self.idx = Some(((idx + 1) % self.iters.len()) as u8);
-        self.search();
+        if iter.done() {
+            *self = Stop;
+        } else {
+            index = (index+1) % iters.len();
+            *self = Go { iters, index };
+            self.search();
+        }
     }
 
-    fn seek(&mut self, key: S::Item) {
-        let idx = self.idx.unwrap() as usize;
-        let iter = &mut self.iters[idx];
-        iter.seek(key);
-        if iter.done() { self.idx = None; return; }
-        self.idx = Some(((idx + 1) % self.iters.len()) as u8);
-        self.search();
+    fn seek(&mut self, key: S::Item) -> Option<S::Item> {
+        match self {
+            Stop => None,
+            Go { index, iters } => match iters[*index].seek(key) {
+                None => { *self = Stop; None }
+                Some(_) => {
+                    *index = (*index + 1) % iters.len();
+                    self.search()
+                }
+            }
+        }
     }
 }
