@@ -37,7 +37,7 @@ class Atom:
     args: list[Term]
 
     def __str__(self):
-        return f"{self.head}({', '.join(self.args)})"
+        return f"{self.head}({','.join(self.args)})"
 
 def atom_trie(db: DB, var_order: list[Var], atom: Atom) -> TrieIter:
     # All arguments are variables. TODO: simplify() away this case.
@@ -85,35 +85,24 @@ def conjunct(db: DB, var_order: list[Var], conjuncts: list[Atom]):
 
 
 # ---------- EXAMPLES ----------
-db = {
-    "foo": (2, [("a",1), ("b", 2)]),
+global_db = {
+    "foo": (2, [("a", 1), ("a", 2),
+                ("b", 1), ("b", 2),
+                ]),
     "bar": (2, [(1, "one"), (1, "wun"),
                 (2, "deux"), (2, "two"),
                 ]),
     "baz": (2, [('a', "one"), ('b', "deux")]),
 }
 
-for arity, data in db.values():
+for arity, data in global_db.values():
     assert all(len(row) == arity for row in data)
     assert list(sorted(data)) == data
     #data.sort()
 
-query_ab_bc = [
-    Atom("foo", ["a", "b"]),
-    Atom("bar", ["b", "c"]),
- ]
-assert list(trie_iterate(conjunct(db, "a b c".split(), query_ab_bc))) == [
-    ('a', 1, 'one'), ('a', 1, 'wun'),
-    ('b', 2, 'deux'), ('b', 2, 'two'),
-]
-
-query_triangle = [
-    Atom("foo", ["a", "b"]),
-    Atom("bar", ["b", "c"]),
-    Atom("baz", ["a", "c"]),
-]
-
-def run(query, db=db, var_order=None):
+def run(query, var_order=None, *, db=None):
+    global global_db
+    if db is None: db = global_db
     if var_order is None:
         var_order = []
         # Pick a variable order from left to right.
@@ -124,3 +113,23 @@ def run(query, db=db, var_order=None):
                 var_order.append(v)
         print(f"Picking variable order [{' '.join(var_order)}]")
     return list(trie_iterate(conjunct(db, var_order, query)))
+
+query_ab_bc = [
+    Atom("foo", ["a", "b"]),
+    Atom("bar", ["b", "c"]),
+]
+expect_ab_bc = [
+    ('a', 1, "one"), ('a', 1, "wun"),
+    ('a', 2, "deux"), ('a', 2, "two"),
+    ('b', 1, "one"), ('b', 1, "wun"),
+    ('b', 2, "deux"), ('b', 2, "two"),
+]
+assert expect_ab_bc == run(query_ab_bc, "a b c".split())
+
+query_triangle = [
+    Atom("foo", ["a", "b"]),
+    Atom("bar", ["b", "c"]),
+    Atom("baz", ["a", "c"]),
+]
+expect_triangle = [('a', 1, "one"), ('b', 2, "deux")]
+assert expect_triangle == run(query_triangle, "a b c".split())
