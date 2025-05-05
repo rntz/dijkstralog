@@ -4,19 +4,25 @@ import bisect
 
 # ----- FORWARD-SEEKABLE ITERATORS -----
 class Iter:
-    def done(self): pass        # returns True iff done
+    # returns True iff done
+    def done(self) -> bool: raise NotImplementedError
     # advances, returns self.done()
     # precondition: not self.done()
-    def next(self): pass
+    def next(self) -> bool: raise NotImplementedError
     # seeks to first element >= the given key, returns self.done()
     # precondition: not self.done()
-    def seek(self, key): pass
+    def seek(self, key) -> bool: raise NotImplementedError
 
     # Implement Python iterator/iterable interface.
     def __iter__(self): return self
     def __next__(self):
         if self.done or self.next(): raise StopIteration
         else: return self.key()
+
+class Filter:
+    # Moves to a given key. Returns True if we accept it, False if it should be
+    # filtered out.
+    def accept(self, key) -> bool: raise NotImplementedError
 
 # Wraps a Python iterable into an Iter. seek() is implemented inefficiently.
 class Iterate(Iter):
@@ -78,7 +84,9 @@ class Leapfrog(Iter):
         hi = self.iters[self.idx - 1].key()
         while True:
             iter = self.iters[self.idx]
-            if iter.key() == hi: return False
+            if iter.key() == hi:
+                # All iterators at same key: we matched!
+                return False
             self.finished = iter.seek(hi)
             if self.finished: return True
             hi = iter.key()
@@ -94,17 +102,108 @@ class Leapfrog(Iter):
 
 
 # ----- TRIE ITERATORS -----
-class TrieIter(Iter):
-    def leave(self): pass
+class TrieIter(Iter,Filter):
+    def leave(self): raise NotImplementedError
     # precondition: not self.done()
-    def enter(self): pass
-    def depth(self): pass       # current depth. initially -1.
-    def max_depth(self): pass   # number of levels
-    # invariant: -1 <= self.depth() <= self.max_depth()
+    def enter(self): raise NotImplementedError
+
+    # levels() returns a list with one element per trie levels. Each element is
+    # either Iter or Filter, depending on whether the trie can _ground_ elements
+    # at that depth or not. Iter means it can, and at that depth it acts like an
+    # Iter - you can call done(), key(), next() and seek(). Filter means it
+    # cannot, so the caller must provide keys by calling accept(key) instead.
+    def levels(self) -> list[Any]: pass
+    # Current level in the trie. Initially -1.
+    def level(self): raise NotImplementedError
+    def max_level(self): return len(self.levels())
+
+    def kind(self):
+        assert self.level() >= 0
+        return self.levels()[self.level()]
+    def is_iter(self): return self.kind() is Iter
+    def is_filter(self): return self.kind() is Filter
+
+    # invariant: -1 <= self.depth() <= self.max_level()
     # You shouldn't use a TrieIter as a Python iterator.
     def __next__(self): raise NotImplementedError
     def __iter__(self): raise NotImplementedError
 
+# Some simple trie iterators.
+class TrieFilter(TrieIter):
+    def __init__(self, num_args, function):
+        self.f = function
+        self.n = num_args
+        self.depth = -1
+        self.args = ()
+    def levels(self): return [Filter] * self.n
+    def level(self): return self.depth
+    def enter(self):
+        assert -1 <= self.depth < self.n - 1
+        self.depth += 1
+    def leave(self):
+        assert -1 < self.depth < self.n
+        self.args = self.args[:self.depth]
+        self.depth -= 1
+    def accept(self, key):
+        assert self.depth <= len(self.args) <= self.depth + 1
+        self.args = self.args[:self.depth] + (key,)
+        assert len(self.args) == self.depth + 1
+        return len(self.args) != self.n or self.f(*self.args)
+
+class TrieFn(TrieIter):
+    def __init__(self, num_args, function):
+        self.f = function
+        self.n = num_args
+        self.depth = -1
+        self.args = ()
+        self.empty = False
+    def levels(self): return [Filter] * self.n + [Iter]
+    def level(self): return self.depth
+    def enter(self):
+        assert self.depth + 1 in [-1, len(self.args)]
+        self.depth += 1
+        if self.depth == self.n:
+            self.value = self.f(*self.args)
+            self.empty = False
+    def leave(self):
+        assert self.depth >= 0
+        self.args = self.args[:self.depth]
+        self.depth -= 1
+    def accept(self, key):
+        assert 0 <= self.depth < self.n
+        assert self.depth <= len(self.args) <= self.depth + 1
+        self.args = self.args[:self.depth] + (key,)
+        assert len(self.args) == self.depth + 1
+        return True
+    def done(self):
+        assert len(self.args) == self.n
+        return self.empty
+    def key(self):
+        assert len(self.args) == self.n
+        assert not self.empty
+        return self.value
+    def next(self):
+        assert len(self.args) == self.n
+        assert not self.empty
+        self.empty = True
+        return True
+    def seek(self, key):
+        assert len(self.args) == self.n
+        assert not self.empty
+        if key > self.value:
+            self.empty = True
+        return self.empty
+
+class TrieEq(TrieFn):
+    def __init__(self):
+        super().__init__(1, lambda x: x)
+
+class TrieSingle(TrieFn):
+    def __init__(self, value):
+        super().__init__(0, lambda: value)
+
+
+# ---------- TRIE JOIN ----------
 class TrieJoin(TrieIter):
     # eg: TrieJoin((x,0,2), (y,1,2), (z,0))
     #
@@ -113,56 +212,91 @@ class TrieJoin(TrieIter):
     #        y at levels 1 & 2
     #        z at level  0
     #
+    # Levels must be listed in ascending order.
+    #
     # Level count always starts at 0.
     def __init__(self, *iter_levels):
         # TODO: what if some iterator has 0 levels, i.e. a boolean?
         # TODO: what if there are no iterators?
         maxlevel = max(l for _, *levels in iter_levels for l in levels)
         self.iters = [[] for _ in range(1+maxlevel)]
-        self.level = -1         # current depth
+        self.filters = [[] for _ in range(1+maxlevel)]
+        self.depth = -1         # current depth
         self.frogs = []
-        for it, *levels in iter_levels:
-            assert it.max_depth() == len(levels)
-            assert it.depth() == -1 # shouldn't be open yet
-            for l in levels:
-                self.iters[l].append(it)
+        for it, *which_levels in iter_levels:
+            it_levels = it.levels()
+            assert len(it_levels) == len(which_levels)
+            assert it.level() == -1 # shouldn't be open yet
+            for l, kind in zip(which_levels, it_levels):
+                if kind == Iter:
+                    self.iters[l].append(it)
+                elif kind == Filter:
+                    self.filters[l].append(it)
+                else:
+                    assert kind in [Iter,Filter]
+                    assert False
 
-    def depth(self): return self.levelp
-    def max_depth(self): return len(self.iters)
+    def levels(self):
+        return [(Iter if its else Filter) for its in self.iters]
+
+    def level(self): return self.depth
+
+    def kind(self):
+        assert self.depth >= 0
+        return Iter if self.iters[self.depth] else Filter
 
     def enter(self):
-        assert -1 <= self.level < self.max_depth()
-        assert self.level == -1 or not self.done()
-        self.level += 1
-        for iter in self.iters[self.level]:
+        assert -1 <= self.depth < self.max_level()
+        assert self.depth == -1 or not self.done()
+        self.depth += 1
+        for iter in self.iters[self.depth] + self.filters[self.depth]:
             iter.enter()
-        self.frogs.append(Leapfrog(*self.iters[self.level]))
+        self.frogs.append(Leapfrog(*self.iters[self.depth]))
 
     def leave(self):
-        assert -1 < self.level <= self.max_depth()
-        for iter in self.iters[self.level]:
+        assert -1 < self.depth <= self.max_level()
+        for iter in self.iters[self.depth] + self.filters[self.depth]:
             iter.leave()
         self.frogs.pop()
-        self.level -= 1
+        self.depth -= 1
+
+    def _accept(self, key):
+        return all(fs.accept(key) for fs in self.filters[self.depth])
+
+    def accept(self, key):
+        assert self.is_filter()
+        return self._accept(key)
 
     def done(self):
-        assert self.level >= 0
+        assert self.depth >= 0
+        assert self.is_iter()
         return self.frogs[-1].done()
 
     def key(self):
-        assert self.level >= 0
+        assert self.depth >= 0
+        assert self.is_iter()
         assert not self.done()
         return self.frogs[-1].key()
 
     def next(self):
-        assert self.level >= 0 and not self.done()
-        return self.frogs[-1].next()
+        assert self.depth >= 0
+        assert self.is_iter()
+        assert not self.done()
+        while not self.frogs[-1].next():
+            # Do we accept the key we found?
+            if self._accept(self.key()): return False
+        return True             # ran out of keys
 
     def seek(self, key):
-        assert self.level >= 0
-        self.frogs[-1].seek(key)
+        assert self.depth >= 0
+        assert self.is_iter()
+        while not self.frogs[-1].seek(key):
+            if self._accept(self.key()): return False
+        return True
 
     def debug_dump(self, name=None, file=None):
+        # TODO: print filters too!
+        assert all(not f for f in self.filters), "debug_dump unimplemented when filters involved"
         iters = {}
         for lvl in self.iters:
             for it in lvl:
@@ -171,10 +305,10 @@ class TrieJoin(TrieIter):
         all_names = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         assert len(iters) <= len(all_names)
         iter_names = dict(zip(sorted(iters.keys()), all_names))
-        if self.level == -1:
+        if self.depth == -1:
             print("inactive")
         else:
-            names = (iter_names[id(it)] for it in self.iters[self.level])
+            names = (iter_names[id(it)] for it in self.iters[self.depth])
             print(f"active {' '.join(names)}")
         for x, it in iters.items():
             it.debug_dump(iter_names[x], file=file)
@@ -240,34 +374,39 @@ class TrieIterator(TrieIter):
         self.trie = trie
         self.stack = None
 
-    def depth(self):
+    def level(self):
         return len(self.stack) if self.stack is not None else -1
 
-    def max_depth(self): return self.trie.depth
+    def levels(self):
+        return [Iter for _ in range(self.trie.depth)]
+
+    def kind(self):
+        assert self.level() >= 0
+        return Iter
 
     def done(self):
-        assert self.depth() >= 0
+        assert self.level() >= 0
         return self.posn >= len(self.keys)
 
     def key(self):
-        assert self.depth() >= 0
+        assert self.level() >= 0
         assert not self.done()
         return self.keys[self.posn]
 
     def next(self):
-        assert self.depth() >= 0
+        assert self.level() >= 0
         assert not self.done()
         self.posn += 1
         return self.done()
 
     def seek(self, key):
-        assert self.depth() >= 0
+        assert self.level() >= 0
         assert not self.done()
         self.posn = bisect.bisect_left(self.keys, key, self.posn)
         return self.done()
 
     def enter(self):
-        if self.depth() == -1:
+        if self.level() == -1:
             self.stack = []
             self.node = self.trie
         else:
@@ -282,7 +421,7 @@ class TrieIterator(TrieIter):
         self.posn = 0
 
     def leave(self):
-        assert self.depth() >= 0
+        assert self.level() >= 0
         if self.stack:
             self.node, self.keys, self.posn = self.stack.pop()
         else:
@@ -302,26 +441,29 @@ class SortedListTrie(TrieIter):
         assert list(sorted(sorted_list)) == sorted_list
         assert all(len(x) == self.tuple_length for x in sorted_list)
 
-    def depth(self): return len(self.bounds) - 1
-    def max_depth(self): return self.tuple_length
+    def level(self): return len(self.bounds) - 1
+    def levels(self): return [Iter for _ in range(self.tuple_length)]
+    def kind(self):
+        assert self.level() >= 0
+        return Iter
 
     def done(self):
-        assert self.depth() >= 0
+        assert self.level() >= 0
         return self.region is None
 
     def key(self):
-        assert self.depth() >= 0
+        assert self.level() >= 0
         assert not self.done()
         (start, end) = self.region
         assert start != end
         elem = self.sorted_list[start]
-        depth = self.depth()
+        depth = self.level()
         prefix = elem[:depth+1]
         assert all(prefix == x[:depth+1] for x in self.sorted_list[start:end])
         return elem[depth]
 
     def next(self):
-        depth = self.depth()
+        depth = self.level()
         assert depth >= 0
         assert not self.done()
         (start, end) = self.region
@@ -355,7 +497,7 @@ class SortedListTrie(TrieIter):
         return False
 
     def seek(self, key):
-        depth = self.depth()
+        depth = self.level()
         assert depth >= 0
         assert not self.done()
 
@@ -395,7 +537,7 @@ class SortedListTrie(TrieIter):
         return False
 
     def enter(self):
-        depth = self.depth() + 1 # new depth
+        depth = self.level() + 1 # new depth
         assert depth <= self.tuple_length
 
         if depth == 0:
@@ -421,9 +563,9 @@ class SortedListTrie(TrieIter):
         self.region = (start, end)
 
     def leave(self):
-        assert self.depth() >= 0
+        assert self.level() >= 0
         self.region = self.bounds.pop()
-        if self.depth() == -1:
+        if self.level() == -1:
             length = len(self.sorted_list)
             assert self.region == ((0, length) if length else None)
         else:
@@ -431,15 +573,17 @@ class SortedListTrie(TrieIter):
 
     def debug_dump(self, name=None, file=None):
         header = f"{name} " if name is not None else ""
-        depth = self.depth()
+        depth = self.level()
         state = "    "
         if self.region is None:
             value = "DONE"
         else:
             (start, end) = self.region
             assert start < end
-            prefix = self.sorted_list[start][:depth]
-            value = f"from {start}-{end} prefix {prefix} keys {self.sorted_list[start]} to {self.sorted_list[end-1]}"
+            prefix = ""
+            if depth >= 0:
+                prefix = f"prefix {self.sorted_list[start][:depth+1]} "
+            value = f"from {start}-{end} {prefix}keys {self.sorted_list[start]} to {self.sorted_list[end-1]}"
         print(f"{header}{depth:2} {value}", file=file)
 
 
@@ -451,8 +595,8 @@ def trie_iterate(iter: TrieIter, debug=False):
     def debug_dump(*a,**kw):
         if debug: iter.debug_dump(*a,**kw)
 
-    max_depth = iter.max_depth()
-    p(f"max_depth: {max_depth}")
+    max_level = iter.max_level()
+    p(f"max_level: {max_level}")
     p("entering at ()")
     iter.enter()
     debug_dump()
@@ -464,7 +608,7 @@ def trie_iterate(iter: TrieIter, debug=False):
     while True:
         assert not iter.done()
         # As long as we're not at the bottom of the trie, descend.
-        while len(key) < max_depth - 1 and not iter.done():
+        while len(key) < max_level - 1 and not iter.done():
             key += (iter.key(),)
             p(f"entering at {key}")
             iter.enter()
