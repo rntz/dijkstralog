@@ -40,11 +40,11 @@ data Seek k v = Seek --nonempty
   }
 deriving instance Functor (Seek k)
 
-onSeek :: (Seek k v -> Seek k u) -> Iter k v -> Iter k u
-onSeek f = Iter . fmap f . run
+-- onSeek :: (Seek k v -> Seek k u) -> Iter k v -> Iter k u
+-- onSeek f = Iter . fmap f . run
 
-onIter :: (Iter k v -> Iter k u) -> Maybe (Seek k v) -> Maybe (Seek k u)
-onIter f = run . f . Iter
+-- onIter :: (Iter k v -> Iter k u) -> Maybe (Seek k v) -> Maybe (Seek k u)
+-- onIter f = run . f . Iter
 
 instance Ord k => Apply (Seek k) where
   map2 :: Ord k => (a -> b -> c) -> Seek k a -> Seek k b -> Seek k c
@@ -116,8 +116,11 @@ instance Ord k => OuterJoin (Iter k) where
 -- Union via outer join: we combine the values using a commutative semigroup
 -- operator. (If it's not commutative that's fine too, I guess? But make sure
 -- you know what you're doing.)
+unionWith :: Ord k => (v -> v -> v) -> Iter k v -> Iter k v -> Iter k v
+unionWith f = outerJoin (lr id id f)
+
 instance (Ord k, Semigroup v) => Semigroup (Iter k v) where
-  (<>) = outerJoin (lr id id (<>))
+  (<>) = unionWith (<>)
 
 instance (Ord k, Semigroup v) => Monoid (Iter k v) where
   mempty = Iter Nothing
