@@ -1,14 +1,15 @@
-{-# LANGUAGE TypeFamilies, FunctionalDependencies, ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies, FunctionalDependencies, ScopedTypeVariables, PartialTypeSignatures #-}
 
 import Prelude hiding (head, tail, sum, product, mapMaybe)
 
 import Control.Exception (assert)
+import Control.Monad (guard)
+import Data.Coerce (coerce)
 import Data.Foldable (Foldable (toList, foldMap))
 import Data.List (sortBy, insertBy)
 import Data.List.NonEmpty (NonEmpty (..), head, tail, uncons, nonEmpty)
 import Data.Ord (comparing)
 import qualified Data.List.NonEmpty as NE
-import Data.Coerce (coerce)
 
 import Debug.Trace (trace)
 
@@ -39,11 +40,11 @@ data Seek k v = Seek --nonempty
   }
 deriving instance Functor (Seek k)
 
-onIter :: (Seek k v -> Seek k u) -> Iter k v -> Iter k u
-onIter f = Iter . fmap f . run
+onSeek :: (Seek k v -> Seek k u) -> Iter k v -> Iter k u
+onSeek f = Iter . fmap f . run
 
-onSeek :: (Iter k v -> Iter k u) -> Maybe (Seek k v) -> Maybe (Seek k u)
-onSeek f = run . f . Iter
+onIter :: (Iter k v -> Iter k u) -> Maybe (Seek k v) -> Maybe (Seek k u)
+onIter f = run . f . Iter
 
 instance Ord k => Apply (Seek k) where
   map2 :: Ord k => (a -> b -> c) -> Seek k a -> Seek k b -> Seek k c
@@ -54,72 +55,72 @@ instance Ord k => Apply (Seek k) where
                              t' <- run $ seek t AtLeast (key s')
                              return $ map2 f s' t'
 
-
--- Possibly-empty seekable iterators.
 instance Ord k => Apply (Iter k) where
   map2 f s t = Iter (map2 f <$> run s <*> run t)
 
-class Functor f => MapMaybe f where
-  mapMaybe :: (a -> Maybe b) -> f a -> f b
-  catMaybes :: f (Maybe a) -> f a
-  catMaybes = mapMaybe id
+
+-- -- MapMaybe. Seems unnecessary.
+-- class Functor f => MapMaybe f where
+--   mapMaybe :: (a -> Maybe b) -> f a -> f b
+--   catMaybes :: f (Maybe a) -> f a
+--   catMaybes = mapMaybe id
 
-instance MapMaybe (Seek k) where
-  mapMaybe f t@(Seek k v _) = Seek k (v >>= f) (\b k -> mapMaybe f $ seek t b k)
+-- instance MapMaybe (Seek k) where
+--   mapMaybe f t@(Seek k v _) = Seek k (v >>= f) (\b k -> mapMaybe f $ seek t b k)
 
-instance MapMaybe (Iter k) where
-  mapMaybe f = onIter (mapMaybe f)
+-- instance MapMaybe (Iter k) where
+--   mapMaybe f = onSeek (mapMaybe f)
 
-filterMap :: (k -> v -> Maybe u) -> Iter k v -> Iter k u
-filterMap f = onIter loop
-  where loop t@(Seek k v _) = Seek k (v >>= f k) (\b k -> filterMap f $ seek t b k)
-
-mapWithKey :: (k -> v -> u) -> Iter k v -> Iter k u
-mapWithKey f = filterMap (\k v -> Just (f k v))
-
+
+-- Outer joins, ie generalized unions.
+-- Do we have a left thing, a right thing, or both?
 data LR x y = L x | R y | B x y
 
-left :: LR x y -> Maybe x
-left (B x y) = Just x
-left (L x) = Just x
-left (R _) = Nothing
+lr :: (a -> c) -> (b -> c) -> (a -> b -> c) -> LR a b -> c
+lr left rght both (L x) = left x
+lr left rght both (R y) = rght y
+lr left rght both (B x y) = both x y
 
-rght :: LR x y -> Maybe y
-rght (B x y) = Just y
-rght (R y) = Just y
-rght (L _) = Nothing
+class Functor f => OuterJoin f where
+  outerPair :: f a -> f b -> f (LR a b)
+  outerJoin :: (LR a b -> c) -> f a -> f b -> f c
+  outerJoin f xs ys = f <$> outerPair xs ys
 
-lr :: Maybe x -> Maybe y -> Maybe (LR x y)
-lr (Just x) (Just y) = Just $ B x y
-lr (Just x) Nothing = Just $ L x
-lr Nothing (Just y) = Just $ R y
-lr Nothing Nothing = Nothing
+instance OuterJoin Maybe where
+  -- -- Concise implementation:
+  -- outerPair (Just x) y = Just $ maybe (L x) (B x) y
+  -- outerPair Nothing  y = R <$> y
 
--- class Apply f => OuterJoin f where
---   outerJoin :: (LR a b -> c) -> f a -> f b -> f c
+  -- A more explicit implementation is probably better pedagogically:
+  outerPair (Just x) (Just y) = Just $ B x y
+  outerPair (Just x) Nothing  = Just $ L x
+  outerPair Nothing  (Just y) = Just $ R y
+  outerPair Nothing  Nothing  = Nothing
 
-outerJoin :: forall k v u w. Ord k => (k -> LR v u -> Maybe w) -> Iter k v -> Iter k u -> Iter k w
-outerJoin f s t = Iter $ do st <- lr (run s) (run t)
-                            case st of
-                              L xs -> filterMap (\k v -> f k (L v)) `onSeek` Just xs
-                              R ys -> filterMap (\k v -> f k (R v)) `onSeek` Just ys
-                              B xs ys -> undefined
+instance Ord k => OuterJoin (Seek k) where
+  outerPair s t =
+    Seek { key = key s `min` key t
+         , value = case compare (key s) (key t) of
+                     LT -> L <$> value s
+                     GT -> R <$> value t
+                     EQ -> B <$> value s <*> value t
+         , seek = \b k -> outerPair (seek s b k) (seek t b k)
+         }
 
--- outerJoin f = coerce oj
---   where onlyL = undefined
---         oj :: Maybe (Seek k v) -> Maybe (Seek k u) -> Maybe (Seek k w)
---         oj Nothing t = contents . filterMap (\k u -> f k Nothing (Just u)) $ Iter t
---         oj s Nothing = contents . filterMap (\k v -> f k (Just v) Nothing) $ Iter s
---         oj (Just s) (Just t) = Just $ Seek undefined undefined undefined
+instance Ord k => OuterJoin (Iter k) where
+  outerPair (Iter s) (Iter t) = Iter $ outerJoin combine s t
+    where combine (B xs ys) = outerPair xs ys
+          combine (L xs) = L <$> xs
+          combine (R ys) = R <$> ys
 
--- outerJoin f (Iter Nothing) t = filterMap (\k u -> f k Nothing (Just u)) t
--- outerJoin f s (Iter Nothing) = filterMap (\k v -> f k (Just v) Nothing) s
--- outerJoin f (Iter (Just s@(Seek sk sv ss))) (Iter (Just t@(Seek tk tv ts))) =
---   Iter $ Just $ Seek
---   { key = min sk tk
---   , value = undefined
---   , seek = \b tgt -> coerce (outerJoin f) (ss b tgt) (ts b tgt)
---   }
+-- Union via outer join: we combine the values using a commutative semigroup
+-- operator. (If it's not commutative that's fine too, I guess? But make sure
+-- you know what you're doing.)
+instance (Ord k, Semigroup v) => Semigroup (Iter k v) where
+  (<>) = outerJoin (lr id id (<>))
+
+instance (Ord k, Semigroup v) => Monoid (Iter k v) where
+  mempty = Iter Nothing
 
 
 -- Converting into & out of sorted lists.
@@ -144,23 +145,25 @@ traceFromList :: (Show k, Ord k) => String -> [(k,v)] -> Iter k v
 fromList = fromSorted . sortBy (comparing fst)
 traceFromList name = traceFromSorted name . sortBy (comparing fst)
 
--- 
--- -- Examples
--- list1 = [(1, "one"), (2, "two"), (3, "three"), (5, "five")]
--- list2 = [(1, "a"), (3, "c"), (5, "e")]
+
+-- Examples
+list1 = [(1, "one"), (2, "two"), (3, "three"), (5, "five")]
+list2 = [(1, "a"), (3, "c"), (5, "e")]
 
--- ms1 = traceFromList "A" list1
--- ms2 = traceFromList "B" list2
+ms1, ms2 :: Iter Int String
+ms1 = traceFromList "A" list1
+ms2 = traceFromList "B" list2
 
--- m = pair <$> ms1 <*> ms2
+m = pair ms1 ms2
 
--- xs = traceFromList "x" [(x,x) | x <- [1,3 .. 100]]
--- ys = traceFromList "y" [(y,y) | y <- [2,4 .. 100]]
--- zs = traceFromList "z" [(z,z) | z <- [1,100]]
+xs = traceFromList "x" [(x,x) | x <- [1,3 .. 100]]
+ys = traceFromList "y" [(y,y) | y <- [2,4 .. 100]]
+zs = traceFromList "z" [(z,z) | z <- [1,100]]
 
--- mxyz = pair <$> (pair <$> xs <*> ys) <*> zs
+mxyz :: Iter Int ((Int, Int), Int)
+mxyz = pair (pair xs ys) zs
 
--- -- avoids interleaving of `trace` output with printing of value at REPL
--- draino x = length xs `seq` xs
---   where xs = drain x
+-- avoids interleaving of `trace` output with printing of value at REPL
+draino x = length xs `seq` xs
+  where xs = drain x
 
