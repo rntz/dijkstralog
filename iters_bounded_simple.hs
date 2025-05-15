@@ -24,9 +24,10 @@ matches :: Ord k => Bound -> k -> k -> Bool
 matches AtLeast k k' = k <= k'
 matches Greater k k' = k  < k'
 
-newtype Iter k v = Iter { run :: Maybe (Seek k v) } deriving Functor --possibly empty
-
 -- Sorted, seekable iterators as a coinductive type.
+-- Iter k v = we know whether it's empty or not.
+-- Seek k v = we know a lower bound on the remaining keys.
+newtype Iter k v = Iter { run :: Maybe (Seek k v) } deriving Functor
 data Seek k v = Seek --nonempty
   { key :: !k
   , value :: Maybe v
