@@ -1,10 +1,11 @@
 {-# LANGUAGE DataKinds, FunctionalDependencies, TypeFamilies, TypeFamilyDependencies, UndecidableInstances #-}
 import Prelude hiding (head, sum, product)
-import Debug.Trace (trace)
-import Data.Ord (comparing)
+import Control.Exception (assert)
+import Data.Function (on)
 import Data.List (sortBy, sort)
 import Data.List.NonEmpty (NonEmpty (..), head, groupAllWith, toList)
-import Data.Function (on)
+import Data.Ord (comparing)
+import Debug.Trace (trace)
 
 -- A lower bound in a totally ordered key-space k; corresponds to some part of an
 -- ordered sequence we can seek forward to.
@@ -38,7 +39,7 @@ atleast (Found k _) = Atleast k
 atleast (Bound k)   = k
 
 data Iter k v = Iter
-  { posn :: !(Position k v)
+  { posn :: Position k v
   , seek :: Bound k -> Iter k v
   } deriving Functor
 
@@ -77,10 +78,7 @@ fromSorted l@((k,v):_) = Iter (Found k v) seek
   where seek target = fromSorted $ dropWhile (not . matches target . fst) l
 
 matches :: Ord k => Bound k -> k -> Bool
-matches Init        _ = True
-matches Done        _ = False
-matches (Atleast x) y = x <= y
-matches (Greater x) y = x <  y
+matches target x = target <= Atleast x
 
 traceFromSorted :: (Show k, Ord k) => String -> [(k,v)] -> Iter k v
 traceFromSorted name []          = emptyIter
@@ -106,6 +104,18 @@ fromFunction f = seek Init
 -- The constant function is especially important.
 always :: v -> Iter k v
 always x = fromFunction (\_ -> Just x)
+
+-- Range queries. Unlike fromFunction, this can improve performance in
+-- conjunctions, even if it isn't generally productive.
+--
+-- The interpretation here is that a key k is included if (lo <= Atleast k < hi).
+-- To make the high bound "exclusive", let hi = Atleast k2.
+-- To make the high bound "inclusive", let hi = Greater k2.
+inRange :: Ord k => Bound k -> Bound k -> Iter k v -> Iter k v
+inRange lo hi t = loop (seek t lo)
+  where loop t | bound t < hi = assert (lo <= bound t) $
+                                t { seek = loop . seek t }
+               | otherwise    = emptyIter
 
 
 -- Inner joins, ie generalized intersection.
