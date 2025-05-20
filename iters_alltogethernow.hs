@@ -1,7 +1,10 @@
-import Prelude hiding (sum, product)
+{-# LANGUAGE DataKinds, TypeFamilies, TypeFamilyDependencies, UndecidableInstances #-}
+import Prelude hiding (head, sum, product)
 import Debug.Trace (trace)
 import Data.Ord (comparing)
-import Data.List (sortBy)
+import Data.List (sortBy, sort)
+import Data.List.NonEmpty (NonEmpty (..), head, groupAllWith, toList)
+import Data.Function (on)
 
 -- A lower bound in a totally ordered key-space k; corresponds to some part of an
 -- ordered sequence we can seek forward to.
@@ -59,7 +62,9 @@ emptyIter = Iter (Bound Done) (const emptyIter)
 -- seek t target = search t target
 
 
--- Converting to & from sorted lists
+-- Converting to & from sorted lists. (fromSorted l) is always productive, while
+-- (toSorted t) will infinite loop if t is unproductive; indeed, this is more or
+-- less the definition of (un)productivity.
 toSorted :: Iter k v -> [(k,v)]
 toSorted (Iter (Bound Done) _)   = []
 toSorted (Iter (Found k v) seek) = (k,v) : toSorted (seek (Greater k))
@@ -98,6 +103,7 @@ fromFunction f = seek Init
                            Nothing -> Bound (Greater k)
         at p = Bound p
 
+-- The constant function is especially important.
 always :: v -> Iter k v
 always x = fromFunction (\_ -> Just x)
 
@@ -158,7 +164,7 @@ instance Ord k => OuterJoin (Iter k) where
                              (\k -> outerJoin l r b (seek s k) (seek t k))
 
 
--- Semiring magic.
+-- Semirings.
 class Additive a where
   zero :: a
   add :: a -> a -> a
@@ -212,6 +218,68 @@ mxyz = liftA2 (,) (liftA2 (,) xs ys) zs
 
 -- avoids interleaving of `trace` output with printing of value at REPL
 drain x = length xs `seq` xs where xs = toSorted x
+
+
+-- Tries as nested iterators.
+newtype Value a = Value { getValue :: a } deriving (Show, Eq)
+instance Additive a => Additive (Value a) where
+  zero = Value zero
+  add x y = Value $ getValue x `add` getValue y
+  sum = Value . sum . map getValue
+instance Multiply a => Multiply (Value a) where
+  one = Value one
+  mul x y = Value $ getValue x `mul` getValue y
+  product = Value . product . map getValue
+
+type family Trie ks a = r | r -> ks a where
+  Trie '[]    a = Value a
+  Trie (k:ks) a = Iter k (Trie ks a)
+
+data Tuple ks where --ahh, lisp.
+  Nil  :: Tuple '[]
+  Cons :: k -> Tuple ks -> Tuple (k:ks)
+
+deriving instance Show (Tuple '[])
+deriving instance (Show k, Show (Tuple ks)) => Show (Tuple (k:ks))
+
+class Flatten ks where flatten :: Trie ks a -> [(Tuple ks, a)]
+instance Flatten '[] where flatten (Value x) = [(Nil, x)]
+instance Flatten ks => Flatten (k:ks) where
+  flatten iter = [ (Cons k ks, v)
+                 | (k,es) <- toSorted $ flatten <$> iter
+                 , (ks,v) <- es ]
+
+class ToTrie ks a where
+  toTrie :: [(Tuple ks, a)] -> Trie ks a
+
+instance Additive a => ToTrie '[] a where
+  toTrie es = Value $ sum [v | (_, v) <- es]
+
+instance (Ord k, ToTrie ks a) => ToTrie (k:ks) a where
+  toTrie es = fromSorted $ map convert $ groupAllWith fst [ (k, (ks, v))
+                                                          | (Cons k ks, v) <- es]
+    where convert :: NonEmpty (k, (Tuple ks, a)) -> (k, Trie ks a)
+          convert ks = (fst (head ks), toTrie $ map snd $ toList ks)
+
+
+-- Extending a trie iterator to more columns.
+data Subseq xs ys where
+  SubNil  :: Subseq '[] '[]
+  SubCons :: Subseq xs ys -> Subseq (x:xs) (x:ys)
+  SubDrop :: Subseq xs ys -> Subseq xs (y:ys)
+
+extend :: Subseq xs ys -> Trie xs a -> Trie ys a
+extend SubNil      t = t
+extend (SubCons p) t = extend p <$> t
+extend (SubDrop p) t = always (extend p t)
+
+-- What about repeating columns? Uh oh. That seems harder, at least if we want
+-- to allow non-adjacent duplicates. Could we use names/strings at the type
+-- level to make this easier?
+
+-- We can at least do this to get an equality relation:
+equality :: (Multiply a, Ord k) => Iter k (Iter k a)
+equality = fromFunction (\k -> Just $ fromSorted [(k, one)])
 
 
 -- Let's try a triangle query!
@@ -269,3 +337,4 @@ q    = qABC
 -- try: do print qResults; putStrLn "----------"; mapM_ print qResults
 qCount = contract $ contract $ contract q
 qResults = drain $ fmap drain $ fmap (fmap drain) q -- ugh. need more type magic.
+-- qResults = flatten q
