@@ -15,9 +15,10 @@ class Functor f => Apply f where
   pair :: f a -> f b -> f (a,b)
   pair = map2 (,)
 
--- Parts of a sequence we can seek to.
-data Target k = Init | Atleast !k | Greater !k | Done deriving (Show, Eq)
-instance Ord k => Ord (Target k) where
+-- A lower bound in a totally ordered key-space k; corresponds to some part of an
+-- ordered sequence we can seek forward to.
+data Bound k = Init | Atleast !k | Greater !k | Done deriving (Show, Eq)
+instance Ord k => Ord (Bound k) where
   Init      <= _         = True
   _         <= Done      = True
   _         <= Init      = False
@@ -29,22 +30,19 @@ instance Ord k => Ord (Target k) where
 
 -- An iterator has either found a particular key-value pair, or knows a lower
 -- bound on future keys.
-data Position k v = Found !k v | Bound !(Target k) deriving (Show, Eq, Functor)
+data Position k v = Found !k v | Bound !(Bound k) deriving (Show, Eq, Functor)
 
-bound :: Position k v -> Target k
-bound (Found k _) = Atleast k
-bound (Bound k) = k
+key :: Position k v -> Bound k
+key (Found k _) = Atleast k
+key (Bound k) = k
 
 data Iter k v = Iter
   { posn :: !(Position k v)
-  , seek :: Target k -> Iter k v
+  , seek :: Bound k -> Iter k v
   } deriving Functor
 
 emptyIter :: Iter k v
 emptyIter = Iter (Bound Done) (const emptyIter)
-
-key :: Iter k v -> Target k
-key s = bound (posn s)
 
 
 -- Converting to & from sorted lists
@@ -53,7 +51,7 @@ toSorted (Iter (Bound Done) seek) = []
 toSorted (Iter (Bound k) seek) = toSorted $ seek k
 toSorted (Iter (Found k v) seek) = (k,v) : toSorted (seek (Greater k))
 
-matches :: Ord k => Target k -> k -> Bool
+matches :: Ord k => Bound k -> k -> Bool
 matches Init _ = True
 matches Done _ = False
 matches (Atleast x) y = x <= y
@@ -78,20 +76,19 @@ traceFromList name = traceFromSorted name . sortBy (comparing fst)
 
 -- Inner joins, ie generalized intersection.
 instance Ord k => Apply (Iter k) where
-  map2 f s t = Iter posn' seek'
-    where posn' = map2 f (posn s) (posn t)
-          -- -- The simple implementation without sideways information passing.
+  map2 f s t = Iter (map2 f (posn s) (posn t)) seek'
+    where -- -- The simple implementation without sideways information passing.
           -- seek' k = map2 f (seek s k) (seek t k)
           -- The "leapfrog" implementation.
           seek' k = map2 f s' t'
             where s' = seek s k
-                  t' = seek t (key s')
+                  t' = seek t $ key $ posn s'
 
 -- Think of this as a "value-aware maximum": we find the maximum position, and
 -- combine the values if present.
 instance Ord k => Apply (Position k) where
   map2 f (Found k1 v1) (Found k2 v2) | k1 == k2 = Found k1 (f v1 v2)
-  map2 f x y = Bound (bound x `max` bound y)
+  map2 f x y = Bound (key x `max` key y)
 
 
 -- Outer joins, ie generalized union.
@@ -102,7 +99,7 @@ class Functor f => OuterJoin f where
 -- apply the appropriate function (l, r, b, or nothing) to the values present.
 instance Ord k => OuterJoin (Position k) where
   outerJoin l r b p q =
-    case bound p `compare` bound q of
+    case key p `compare` key q of
       LT -> l <$> p
       GT -> r <$> q
       EQ -> case (p, q) of
