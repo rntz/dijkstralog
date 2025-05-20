@@ -92,6 +92,30 @@ fromList = fromSorted . sortBy (comparing fst)
 traceFromList name = traceFromSorted name . sortBy (comparing fst)
 
 
+-- Using sorted arrays, or any constant-time *strictly increasing* function out
+-- of a range of integers.
+fromSortedArray :: Ord k => Int -> Int -> (Int -> (k,v)) -> Iter k v
+fromSortedArray lo hi get = at lo
+  where at i | i < hi    = Iter (uncurry Found $ get i) (seekFrom i)
+             | otherwise = emptyIter
+        getKey = fst . get
+        test target i = (i == hi) || matches target (getKey i)
+        seekFrom i target
+          -- necessary to ensure the precondition that (test i == False).
+          | matches target (getKey i) = at i
+          -- optimization to make "bumping" an iterator faster.
+          | Greater k <- target, k == getKey i = at (i + 1)
+          | otherwise = at $ snd $ binarySearch mid (test target) i hi
+        mid i j = if i + 1 == j then Nothing else Just $ (i + j) `div` 2
+
+-- Binary search, from https://byorgey.wordpress.com/2023/01/01/competitive-programming-in-haskell-better-binary-search/
+-- Finds a pair (l,r) such that (test l = False), (test r = True), and (mid l r = Nothing).
+-- Precondition: test lo = False, test hi = True.
+binarySearch :: (a -> a -> Maybe a) -> (a -> Bool) -> a -> a -> (a,a)
+binarySearch mid test = go where
+  go l r = maybe (l,r) (\m -> if test m then go l m else go m r) (mid l r)
+
+
 -- Any function (k -> Maybe v) can become an unproductive Iter.
 fromFunction :: (k -> Maybe v) -> Iter k v
 fromFunction f = seek Init
