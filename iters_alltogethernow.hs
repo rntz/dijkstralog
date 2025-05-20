@@ -252,6 +252,9 @@ instance Row (a,b) [a,b] where
 instance Row (a,b,c) [a,b,c] where
   parts (a,b,c) = Cons a (Cons b (Cons c Nil))
   whole (Cons a (Cons b (Cons c Nil))) = (a,b,c)
+instance Row (a,b,c,d) [a,b,c,d] where
+  parts (a,b,c,d) = Cons a (Cons b (Cons c (Cons d Nil)))
+  whole (Cons a (Cons b (Cons c (Cons d Nil)))) = (a,b,c,d)
 
 class Flatten ks where
   flatten :: Trie ks a -> [(Tuple ks, a)]
@@ -280,6 +283,7 @@ instance (Ord k, ToTrie ks a) => ToTrie (k:ks) a where
 
 
 -- Extending a trie iterator to more columns.
+-- This is not ergonomic to use, however.
 data Subseq xs ys where
   SubNil  :: Subseq '[] '[]
   SubCons :: Subseq xs ys -> Subseq (x:xs) (x:ys)
@@ -318,5 +322,5 @@ tabc = fmap always tac
 
 -- Q(a,b,c) = R(a,b) and S(b,c) and T(a,c)
 qabc = rabc `mul` sabc `mul` tabc
-q :: [(Bool, (String,Int,String))]
+q :: [(Int, (String,Int,String))]
 q = fromTrie qabc
