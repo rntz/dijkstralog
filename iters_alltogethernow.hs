@@ -100,7 +100,7 @@ fromSortedArray lo hi get = at lo
              | otherwise = emptyIter
         getKey = fst . get
         test target i = (i == hi) || matches target (getKey i)
-        seekFrom i target
+        seekFrom i target --precondition: i < hi
           -- necessary to ensure the precondition that (test i == False).
           | matches target (getKey i) = at i
           -- optimization to make "bumping" an iterator faster.
