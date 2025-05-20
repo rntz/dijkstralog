@@ -48,6 +48,8 @@ data Iter k v = Iter
   -- idempotent: if below targ incl (key s) then seek s targ incl == Just s
   } deriving Functor
 
+emptyIter = Iter Done (\_ _ -> emptyIter)
+
 
 -- Inner joins, ie generalized intersection.
 
@@ -68,9 +70,8 @@ instance Ord k => Apply (Iter k) where
     -- rs b k = map2 f (seek s b k) (seek t b k)
     -- Leapfrog definition.
     rs b k | At k' _ <- posn s' = map2 f s' (seek t AtLeast k')
-           | otherwise = empty
+           | otherwise = emptyIter
       where s' = seek s b k
-            empty = Iter Done (\_ _ -> empty)
 
 
 -- Outer joins, ie generalized union.
@@ -119,7 +120,7 @@ instance Ord k => OuterJoin (Position k) where
       GT -> At k2 (R <$> v2)
 
 instance Ord k => OuterJoin (Iter k) where
-  empty = Iter Done (\_ _ -> empty)
+  empty = emptyIter
   outerPair s t = Iter { posn = outerPair (posn s) (posn t)
                        , seek = \b k -> outerPair (seek s b k) (seek t b k) }
 
@@ -163,6 +164,15 @@ fromList = fromSorted . sortBy (comparing fst)
 traceFromList name = traceFromSorted name . sortBy (comparing fst)
 
 
+-- Filter/mapMaybe implementation
+imapMaybe :: (k -> a -> Maybe b) -> Iter k a -> Iter k b
+imapMaybe f t@(Iter Done s) = emptyIter
+imapMaybe f t@(Iter (At k (Yes v)) s) =
+  case f k v of
+    Nothing -> Iter (At k No)      $ \b k -> imapMaybe f $ s b k
+    Just u  -> Iter (At k (Yes u)) $ \b k -> imapMaybe f $ s b k
+
+
 -- Examples
 list1 = [(1, "one"), (2, "two"), (3, "three"), (5, "five")]
 list2 = [(1, "a"), (3, "c"), (5, "e")]
@@ -182,4 +192,3 @@ mxyz = pair (pair xs ys) zs
 
 -- avoids interleaving of `trace` output with printing of value at REPL
 draino x = length xs `seq` xs where xs = toSorted x
-

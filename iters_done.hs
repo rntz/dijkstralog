@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeFamilies, FunctionalDependencies, ScopedTypeVariables, PartialTypeSignatures #-}
 
-import Prelude hiding (head, tail, sum, product, mapMaybe)
+import Prelude hiding (head, tail, sum, product, mapMaybe, filter)
 
 import Control.Exception (assert)
 import Data.Coerce (coerce)
@@ -21,9 +21,9 @@ class Functor f => Apply f where
 
 data Bound = AtLeast | Greater deriving (Show, Eq, Ord)
 
-matches :: Ord k => Bound -> k -> k -> Bool
-matches AtLeast k k' = k <= k'
-matches Greater k k' = k  < k'
+matches :: Ord k => (Bound, k) -> k -> Bool
+matches (AtLeast, k) k' = k <= k'
+matches (Greater, k) k' = k  < k'
 
 data Position k v = At !k (Maybe v) | Done deriving (Show, Eq, Functor)
 
@@ -33,11 +33,14 @@ data Iter k v = Iter
   -- (seek b tgt) seeks toward the first k such that (matches b tgt k).
   -- ie. let b = AtLeast to find first key >= tgt
   --     let b = Greater to find first key  > tgt
-  , seek :: Bound -> k -> Iter k v
+  , seek :: (Bound, k) -> Iter k v
   --  PRECONDITION: key s <= tgt
   -- POSTCONDITION: matches b tgt (key (seek s b tgt))
   -- idempotent: if below targ incl (key s) then seek s targ incl == Just s
   } deriving Functor
+
+emptyIter :: Iter k v
+emptyIter = Iter Done (const emptyIter)
 
 
 -- Inner joins, ie generalized intersection.
@@ -58,10 +61,9 @@ instance Ord k => Apply (Iter k) where
     -- Simple definition.
     -- rs b k = map2 f (seek s b k) (seek t b k)
     -- Leapfrog definition.
-    rs b k | At k' _ <- posn s' = map2 f s' (seek t AtLeast k')
-           | otherwise = empty
-      where s' = seek s b k
-            empty = Iter Done (\_ _ -> empty)
+    rs target | At k' _ <- posn s' = map2 f s' (seek t (AtLeast, k'))
+              | otherwise = emptyIter
+      where s' = seek s target
 
 
 -- Outer joins, ie generalized union.
@@ -110,9 +112,9 @@ instance Ord k => OuterJoin (Position k) where
       GT -> At k2 (R <$> v2)
 
 instance Ord k => OuterJoin (Iter k) where
-  empty = Iter Done (\_ _ -> empty)
-  outerPair s t = Iter { posn = outerPair (posn s) (posn t)
-                       , seek = \b k -> outerPair (seek s b k) (seek t b k) }
+  empty = emptyIter
+  outerPair s t = Iter { posn = posn s `outerPair` posn t
+                       , seek = \target -> seek s target `outerPair` seek t target }
 
 -- Union via outer join: we combine the values using a commutative semigroup
 -- operator. (If it's not commutative that's fine too, I guess? But make sure
@@ -132,19 +134,19 @@ instance (OuterJoin f, Semigroup a) => Monoid (f a) where mempty = empty
 toSorted :: Iter k v -> [(k,v)]
 toSorted (Iter Done _) = []
 toSorted (Iter (At k vopt) seek)
-  | Just v <- vopt = (k, v) : toSorted (seek Greater k)
-  | otherwise = toSorted (seek AtLeast k)
+  | Just v <- vopt = (k, v) : toSorted (seek (Greater, k))
+  | otherwise = toSorted (seek (AtLeast, k))
 
 fromSorted :: Ord k => [(k,v)] -> Iter k v
 fromSorted l = Iter p s where
   p | (k,v):_ <- l = At k (Just v)
     | otherwise    = Done
-  s b tgt = fromSorted $ dropWhile (not . matches b tgt . fst) l
+  s target = fromSorted $ dropWhile (not . matches target . fst) l
 
 traceFromSorted name l = Iter p s where
   p | (k,v):_ <- l = At (trace (name ++ " " ++ show k) k) (Just v)
     | otherwise    = Done
-  s b tgt = traceFromSorted name $ dropWhile (not . matches b tgt . fst) l
+  s target = traceFromSorted name $ dropWhile (not . matches target . fst) l
 
 fromList :: Ord k => [(k,v)] -> Iter k v
 traceFromList :: (Show k, Ord k) => String -> [(k,v)] -> Iter k v
@@ -172,3 +174,21 @@ mxyz = pair (pair xs ys) zs
 -- avoids interleaving of `trace` output with printing of value at REPL
 drain x = length xs `seq` xs where xs = toSorted x
 
+
+-- A BUGGY(!) filter/mapMaybe implementation.
+-- It's not possible to make a non-buggy implementation with this interface!
+imapMaybe :: (k -> a -> Maybe b) -> Iter k a -> Iter k b
+imapMaybe f t@(Iter Done s) = emptyIter
+imapMaybe f t@(Iter (At k v) s) = Iter (At k (v >>= f k)) (imapMaybe f . s)
+
+mapMaybe :: (a -> Maybe b) -> Iter k a -> Iter k b
+mapMaybe f = imapMaybe (const f)
+
+ifilter :: (k -> a -> Bool) -> Iter k a -> Iter k a
+ifilter f = imapMaybe (\k v -> if f k v then Just v else Nothing)
+
+filter :: (a -> Bool) -> Iter k a -> Iter k a
+filter f = ifilter (const f)
+
+-- Example that bugs it out: (drain emptyList1) will infinite loop!
+emptyList1 = filter (const False) $ traceFromList "A" list1
