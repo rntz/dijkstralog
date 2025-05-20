@@ -299,57 +299,6 @@ equality :: (Multiply a, Ord k) => Iter k (Iter k a)
 equality = fromFunction (\k -> Just $ fromSorted [(k, one)])
 
 
--- -- Let's try a triangle query!
--- -- R("a", 1). R("a", 2). R("b", 1). R("b", 2).
--- r :: Multiply a => [(String, [(Int, a)])]
--- r = [ ("a", [(1, one), (2, one)])
---     , ("b", [(1, one), (2, one)])
---     ]
-
--- -- It would be nice if I could do some type magic to handle nested lists.
--- -- Or maybe go direct from N-tuples into nested iterators?
--- rAB :: Multiply a => Iter String (Iter Int a)
--- rAB = traceFromList "R" $ map (fromList <$>) r
-
--- -- S(1, "one"). S(1, "wun"). S(2, "deux"). S(2, "two").
--- s :: Multiply a => [(Int, [(String, a)])]
--- s = [ (1, [("one", one), ("wun", one)])
---     , (2, [("deux", one), ("two", one)])
---     ]
-
--- sBC :: Multiply a => Iter Int (Iter String a)
--- sBC = traceFromList "S" $ map (fromList <$>) s
-
--- -- T("a", "one"). T("b", "deux"). T("mary", "mary").
--- t :: Multiply a => [(String, [(String, a)])]
--- t = [ ("a", [("one", one)])
---     , ("b", [("deux", one)])
---     , ("mary", [("mary", one)])
---     ]
-
--- tAC :: Multiply a => Iter String (Iter String a)
--- tAC = traceFromList "T" $ map (fromList <$>) t
-
--- -- Bring them all into the same type by extending at the right columns.
--- -- Q(a,b,c) = R(a,b) and S(b,c) and T(a,c)
--- rABC :: Multiply a => Iter String (Iter Int (Iter k      a))
--- sABC :: Multiply a => Iter k      (Iter Int (Iter String a))
--- tABC :: Multiply a => Iter String (Iter k   (Iter String a))
--- qABC :: Multiply a => Iter String (Iter Int (Iter String a))
-
--- rABC = fmap (fmap always) rAB
--- sABC = always sBC
--- tABC = fmap always tAC
-
--- -- We expect the result:
--- --
--- --   Q("a", 1, "one")
--- --   Q("b", 2, "deux")
--- --
--- -- and this is what we see.
--- qABC = rABC `mul` sABC `mul` tABC
-
-
 -- Let's try a triangle query!
 -- R("a", 1). R("a", 2). R("b", 1). R("b", 2).
 -- S(1, "one"). S(1, "wun"). S(2, "deux"). S(2, "two").
