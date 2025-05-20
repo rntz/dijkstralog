@@ -25,7 +25,17 @@ instance Ord k => Ord (Bound k) where
 
 -- An iterator has either found a particular key-value pair, or knows a lower
 -- bound on future keys.
-data Position k v = Found !k v | Bound !(Bound k) deriving (Show, Eq, Functor)
+--
+-- ANNOYANCE: This is slightly too eager. We are forced to know whether we've
+-- _found_ a value at a given key, rather than knowing what key we're at and
+-- being able to force the computation of whether we've found a value. This
+-- happens in fromFunction, for instance.
+--
+-- Of course, the computation of the value itself is still lazy, so this is
+-- probably practically insignificant.
+data Position k v = Found !k v
+                  | Bound !(Bound k)
+                    deriving (Show, Eq, Functor)
 
 key :: Position k v -> Bound k
 key (Found k _) = Atleast k
@@ -59,19 +69,20 @@ toSorted (Iter (Bound Done) _)   = []
 toSorted (Iter (Found k v) seek) = (k,v) : toSorted (seek (Greater k))
 toSorted (Iter (Bound k) seek)   = toSorted $ seek k
 
+-- NB. We can't actually seek efficiently in a Haskell list.
+fromSorted :: Ord k => [(k,v)] -> Iter k v
+fromSorted []          = emptyIter
+fromSorted l@((k,v):_) = Iter (Found k v) seek
+  where seek target = fromSorted $ dropWhile (not . matches target . fst) l
+
 matches :: Ord k => Bound k -> k -> Bool
 matches Init        _ = True
 matches Done        _ = False
 matches (Atleast x) y = x <= y
 matches (Greater x) y = x <  y
 
-fromSorted :: Ord k => [(k,v)] -> Iter k v
-fromSorted [] = emptyIter
-fromSorted l@((k,v):_) = Iter (Found k v) seek
-  where seek target = fromSorted $ dropWhile (not . matches target . fst) l
-
 traceFromSorted :: (Show k, Ord k) => String -> [(k,v)] -> Iter k v
-traceFromSorted name [] = emptyIter
+traceFromSorted name []          = emptyIter
 traceFromSorted name l@((k,v):_) = Iter (Found kt v) seek where
   kt = trace (name ++ " " ++ show k) k
   seek target = traceFromSorted name $ dropWhile (not . matches target . fst) l
@@ -83,6 +94,13 @@ traceFromList name = traceFromSorted name . sortBy (comparing fst)
 
 
 -- Inner joins, ie generalized intersection.
+
+-- A value-aware maximum: we find the maximum position, and combine the values
+-- if present.
+instance Ord k => Apply (Position k) where
+  map2 f (Found k1 v1) (Found k2 v2) | k1 == k2 = Found k1 (f v1 v2)
+  map2 f x y = Bound (key x `max` key y)
+
 instance Ord k => Apply (Iter k) where
   map2 f s t = Iter (map2 f (posn s) (posn t)) seek'
     where seek' k = map2 f s' t'
@@ -91,19 +109,18 @@ instance Ord k => Apply (Iter k) where
           -- -- The simple implementation without sideways information passing.
           -- seek' k = map2 f (seek s k) (seek t k)
 
--- Think of this as a value-aware maximum: we find the maximum position, and
--- combine the values if present.
-instance Ord k => Apply (Position k) where
-  map2 f (Found k1 v1) (Found k2 v2) | k1 == k2 = Found k1 (f v1 v2)
-  map2 f x y = Bound (key x `max` key y)
-
 
 -- Outer joins, ie generalized union.
 class Functor f => OuterJoin f where
-  outerJoin :: (a -> c) -> (b -> c) -> (a -> b -> c) -> f a -> f b -> f c
+  outerJoin :: (a -> c)      -- what to do if it's only in the left collection
+            -> (b -> c)      -- what to do if it's only in the right collection
+            -> (a -> b -> c) -- what to do if it's in both collections
+            -> f a           -- the left collection
+            -> f b           -- the right collection
+            -> f c           -- the results
 
--- Think of this as a "value-aware minimum": we find the minimum position, and
--- apply the appropriate function (l, r, b, or nothing) to the values present.
+-- A value-aware minimum: we find the minimum position, and apply the
+-- appropriate function (l, r, b, or nothing) to the values present.
 instance Ord k => OuterJoin (Position k) where
   outerJoin l r b p q =
     case key p `compare` key q of
@@ -164,6 +181,7 @@ instance Multiply Bool where one  = True;  mul = (&&)
 instance Additive Int where zero = 0; add = (+)
 instance Multiply Int where one  = 1; mul = (*)
 
+-- NB. contracting an unproductive iterator will infinite loop.
 contract :: Additive a => Iter k a -> a
 contract = sum . map snd . toSorted
 
@@ -228,8 +246,8 @@ tAC = traceFromList "T" $ map (fromList <$>) t
 rABC :: Multiply a => Iter String (Iter Int (Iter k      a))
 sABC :: Multiply a => Iter k      (Iter Int (Iter String a))
 tABC :: Multiply a => Iter String (Iter k   (Iter String a))
-q    :: Multiply a => Iter String (Iter Int (Iter String a))
-qInt ::               Iter String (Iter Int (Iter String Int))
+qABC :: Multiply a => Iter String (Iter Int (Iter String a))
+q    ::               Iter String (Iter Int (Iter String Int))
 
 rABC = fmap (fmap always) rAB
 sABC = always sBC
@@ -241,9 +259,9 @@ tABC = fmap always tAC
 --   Q("b", 2, "deux")
 --
 -- and this is what we see.
-q = rABC `mul` sABC `mul` tABC
-qInt = q
+qABC = rABC `mul` sABC `mul` tABC
+q    = qABC
 
 -- try: do print qResults; putStrLn "----------"; mapM_ print qResults
-qCount = contract $ contract $ contract qInt
-qResults = map ((map (drain <$>) . drain) <$>) $ drain qInt --UGH. needs more type magic.
+qCount = contract $ contract $ contract q
+qResults = drain $ fmap drain $ fmap (fmap drain) q -- ugh. need more type magic.
