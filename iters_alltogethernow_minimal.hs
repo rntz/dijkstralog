@@ -18,7 +18,9 @@ atleast :: Position k v -> Bound k
 atleast (Found k _) = Atleast k
 atleast (Bound p)   = p
 
-data Iter k v = Iter { posn :: !(Position k v), seek :: Bound k -> Iter k v } deriving Functor
+data Iter k v = Iter { posn :: Position k v
+                     , seek :: Bound k -> Iter k v
+                     } deriving Functor
 key :: Iter k v -> Bound k
 key = atleast . posn
 
