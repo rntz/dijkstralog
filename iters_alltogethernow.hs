@@ -1,10 +1,5 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-
-import Prelude hiding (head, tail, sum, product, mapMaybe, filter)
-
-import Control.Exception (assert)
+import Prelude hiding (sum, product)
 import Debug.Trace (trace)
-
 import Data.Ord (comparing)
 import Data.List (sortBy)
 
@@ -25,7 +20,7 @@ instance Ord k => Ord (Bound k) where
   Done      <= _         = False
   Atleast x <= Atleast y = x <= y
   Atleast x <= Greater y = x <= y
-  Greater x <= Atleast y = x <  y
+  Greater x <= Atleast y = x <  y -- <== NB. the odd one out!
   Greater x <= Greater y = x <= y
 
 -- An iterator has either found a particular key-value pair, or knows a lower
@@ -44,16 +39,29 @@ data Iter k v = Iter
 emptyIter :: Iter k v
 emptyIter = Iter (Bound Done) (const emptyIter)
 
+-- -- Search with early cutoff. This is a constant-factor performance optimization
+-- -- that helps for deep iterator trees with many leaves. The implementations of
+-- -- `search` that we construct below (map2, outerJoin, fromFunction) do not check
+-- -- whether we are _already_ at the given key. So if we didn't wrap recursive
+-- -- calls in `seek`, any call to `search` would call search recursively on all
+-- -- sub-iterators, all the way down to the leaves. Not clear if this is worth it.
+-- seek :: Ord k => Iter k v -> Bound k -> Iter k v
+-- seek t@(Iter (Found k v) _) target | matches target k = t
+-- -- We check strict less-than here because we don't want to prevent doing useful
+-- -- work toward finding the next key-value pair.
+-- seek t@(Iter (Bound b)   _) target | target < b       = t
+-- seek t target = search t target
+
 
 -- Converting to & from sorted lists
 toSorted :: Iter k v -> [(k,v)]
-toSorted (Iter (Bound Done) seek) = []
-toSorted (Iter (Bound k) seek) = toSorted $ seek k
+toSorted (Iter (Bound Done) _)   = []
 toSorted (Iter (Found k v) seek) = (k,v) : toSorted (seek (Greater k))
+toSorted (Iter (Bound k) seek)   = toSorted $ seek k
 
 matches :: Ord k => Bound k -> k -> Bool
-matches Init _ = True
-matches Done _ = False
+matches Init        _ = True
+matches Done        _ = False
 matches (Atleast x) y = x <= y
 matches (Greater x) y = x <  y
 
@@ -77,14 +85,13 @@ traceFromList name = traceFromSorted name . sortBy (comparing fst)
 -- Inner joins, ie generalized intersection.
 instance Ord k => Apply (Iter k) where
   map2 f s t = Iter (map2 f (posn s) (posn t)) seek'
-    where -- -- The simple implementation without sideways information passing.
-          -- seek' k = map2 f (seek s k) (seek t k)
-          -- The "leapfrog" implementation.
-          seek' k = map2 f s' t'
+    where seek' k = map2 f s' t'
             where s' = seek s k
-                  t' = seek t $ key $ posn s'
+                  t' = seek t $ key $ posn s' -- the leapfrog trick
+          -- -- The simple implementation without sideways information passing.
+          -- seek' k = map2 f (seek s k) (seek t k)
 
--- Think of this as a "value-aware maximum": we find the maximum position, and
+-- Think of this as a value-aware maximum: we find the maximum position, and
 -- combine the values if present.
 instance Ord k => Apply (Position k) where
   map2 f (Found k1 v1) (Found k2 v2) | k1 == k2 = Found k1 (f v1 v2)
@@ -115,7 +122,7 @@ instance Ord k => OuterJoin (Iter k) where
 
 
 -- Converting a function "k -> Maybe v" into an unproductive Iter.
-fromFunction :: Ord k => (k -> Maybe v) -> Iter k v
+fromFunction :: (k -> Maybe v) -> Iter k v
 fromFunction f = seek Init
   where seek k = Iter (at k) seek
         at (Atleast k) = case f k of
@@ -126,8 +133,45 @@ fromFunction f = seek Init
 filterKey :: Ord k => (k -> Bool) -> Iter k v -> Iter k v
 filterKey test s = map2 (\x y -> x) s (fromFunction (\k -> if test k then Just () else Nothing))
 
+always :: a -> Iter k a
+always x = fromFunction (\_ -> Just x)
+
+
+-- Semiring magic.
+class Additive a where
+  zero :: a
+  add :: a -> a -> a
+  sum :: [a] -> a
+  sum = foldr add zero
+
+class Multiply a where
+  one :: a
+  mul :: a -> a -> a
+  product :: [a] -> a
+  product = foldr mul one
+
+instance (Ord k, Additive a) => Additive (Iter k a) where
+  zero = emptyIter
+  add = outerJoin id id add
+
+instance (Ord k, Multiply a) => Multiply (Iter k a) where
+  one = always one -- NB. unproductive
+  mul = map2 mul
+
+instance Additive Bool where zero = False; add = (||)
+instance Multiply Bool where one  = True;  mul = (&&)
+
+instance Additive Int where zero = 0; add = (+)
+instance Multiply Int where one  = 1; mul = (*)
+
+contract :: Additive a => Iter k a -> a
+contract = sum . map snd . toSorted
+
 
 -- EXAMPLES
+instance (Show k, Show v) => Show (Iter k v) where
+  show (Iter p _) = "Iter { posn = " ++ show p ++ " }"
+
 list1 = [(1, "one"), (2, "two"), (3, "three"), (5, "five")]
 list2 = [(1, "a"), (3, "c"), (5, "e")]
 
@@ -146,3 +190,60 @@ mxyz = pair (pair xs ys) zs
 
 -- avoids interleaving of `trace` output with printing of value at REPL
 drain x = length xs `seq` xs where xs = toSorted x
+
+
+-- Let's try a triangle query!
+-- R("a", 1). R("a", 2). R("b", 1). R("b", 2).
+r :: Multiply a => [(String, [(Int, a)])]
+r = [ ("a", [(1, one), (2, one)])
+    , ("b", [(1, one), (2, one)])
+    ]
+
+-- It would be nice if I could do some type magic to handle nested lists.
+-- Or maybe go direct from N-tuples into nested iterators?
+rAB :: Multiply a => Iter String (Iter Int a)
+rAB = traceFromList "R" $ map (fromList <$>) r
+
+-- S(1, "one"). S(1, "wun"). S(2, "deux"). S(2, "two").
+s :: Multiply a => [(Int, [(String, a)])]
+s = [ (1, [("one", one), ("wun", one)])
+    , (2, [("deux", one), ("two", one)])
+    ]
+
+sBC :: Multiply a => Iter Int (Iter String a)
+sBC = traceFromList "S" $ map (fromList <$>) s
+
+-- T("a", "one"). T("b", "deux"). T("mary", "mary").
+t :: Multiply a => [(String, [(String, a)])]
+t = [ ("a", [("one", one)])
+    , ("b", [("deux", one)])
+    , ("mary", [("mary", one)])
+    ]
+
+tAC :: Multiply a => Iter String (Iter String a)
+tAC = traceFromList "T" $ map (fromList <$>) t
+
+-- Bring them all into the same type by extending at the right columns.
+-- Q(a,b,c) = R(a,b) and S(b,c) and T(a,c)
+rABC :: Multiply a => Iter String (Iter Int (Iter k      a))
+sABC :: Multiply a => Iter k      (Iter Int (Iter String a))
+tABC :: Multiply a => Iter String (Iter k   (Iter String a))
+q    :: Multiply a => Iter String (Iter Int (Iter String a))
+qInt ::               Iter String (Iter Int (Iter String Int))
+
+rABC = fmap (fmap always) rAB
+sABC = always sBC
+tABC = fmap always tAC
+
+-- We expect the result:
+--
+--   Q("a", 1, "one")
+--   Q("b", 2, "deux")
+--
+-- and this is what we see.
+q = rABC `mul` sABC `mul` tABC
+qInt = q
+
+-- try: do print qResults; putStrLn "----------"; mapM_ print qResults
+qCount = contract $ contract $ contract qInt
+qResults = map ((map (drain <$>) . drain) <$>) $ drain qInt --UGH. needs more type magic.
