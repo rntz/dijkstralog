@@ -1,4 +1,4 @@
-{-# LANGUAGE DataKinds, TypeFamilies, TypeFamilyDependencies, UndecidableInstances #-}
+{-# LANGUAGE DataKinds, FunctionalDependencies, TypeFamilies, TypeFamilyDependencies, UndecidableInstances #-}
 import Prelude hiding (head, sum, product)
 import Debug.Trace (trace)
 import Data.Ord (comparing)
@@ -242,7 +242,22 @@ data Tuple ks where --ahh, lisp.
 deriving instance Show (Tuple '[])
 deriving instance (Show k, Show (Tuple ks)) => Show (Tuple (k:ks))
 
-class Flatten ks where flatten :: Trie ks a -> [(Tuple ks, a)]
+class Row t ks | t -> ks, ks -> t where
+  parts :: t -> Tuple ks
+  whole :: Tuple ks -> t
+instance Row () '[] where parts () = Nil; whole Nil = ()
+instance Row (a,b) [a,b] where
+  parts (a,b) = Cons a (Cons b Nil)
+  whole (Cons a (Cons b Nil)) = (a,b)
+instance Row (a,b,c) [a,b,c] where
+  parts (a,b,c) = Cons a (Cons b (Cons c Nil))
+  whole (Cons a (Cons b (Cons c Nil))) = (a,b,c)
+
+class Flatten ks where
+  flatten :: Trie ks a -> [(Tuple ks, a)]
+  fromTrie :: Row t ks => Trie ks a -> [(a,t)]
+  fromTrie trie = [(x, whole t) | (t,x) <- flatten trie]
+
 instance Flatten '[] where flatten (Value x) = [(Nil, x)]
 instance Flatten ks => Flatten (k:ks) where
   flatten iter = [ (Cons k ks, v)
@@ -251,6 +266,8 @@ instance Flatten ks => Flatten (k:ks) where
 
 class ToTrie ks a where
   toTrie :: [(Tuple ks, a)] -> Trie ks a
+  relation :: (Multiply a, Row t ks) => [t] -> Trie ks a
+  relation tuples = toTrie [(parts ks, one) | ks <- tuples]
 
 instance Additive a => ToTrie '[] a where
   toTrie es = Value $ sum [v | (_, v) <- es]
@@ -268,10 +285,10 @@ data Subseq xs ys where
   SubCons :: Subseq xs ys -> Subseq (x:xs) (x:ys)
   SubDrop :: Subseq xs ys -> Subseq xs (y:ys)
 
-extend :: Subseq xs ys -> Trie xs a -> Trie ys a
-extend SubNil      t = t
-extend (SubCons p) t = extend p <$> t
-extend (SubDrop p) t = always (extend p t)
+extend :: Trie xs a -> Subseq xs ys -> Trie ys a
+extend t SubNil      = t
+extend t (SubCons p) = (`extend` p) <$> t
+extend t (SubDrop p) = always (extend t p)
 
 -- What about repeating columns? Uh oh. That seems harder, at least if we want
 -- to allow non-adjacent duplicates. Could we use names/strings at the type
@@ -282,59 +299,75 @@ equality :: (Multiply a, Ord k) => Iter k (Iter k a)
 equality = fromFunction (\k -> Just $ fromSorted [(k, one)])
 
 
+-- -- Let's try a triangle query!
+-- -- R("a", 1). R("a", 2). R("b", 1). R("b", 2).
+-- r :: Multiply a => [(String, [(Int, a)])]
+-- r = [ ("a", [(1, one), (2, one)])
+--     , ("b", [(1, one), (2, one)])
+--     ]
+
+-- -- It would be nice if I could do some type magic to handle nested lists.
+-- -- Or maybe go direct from N-tuples into nested iterators?
+-- rAB :: Multiply a => Iter String (Iter Int a)
+-- rAB = traceFromList "R" $ map (fromList <$>) r
+
+-- -- S(1, "one"). S(1, "wun"). S(2, "deux"). S(2, "two").
+-- s :: Multiply a => [(Int, [(String, a)])]
+-- s = [ (1, [("one", one), ("wun", one)])
+--     , (2, [("deux", one), ("two", one)])
+--     ]
+
+-- sBC :: Multiply a => Iter Int (Iter String a)
+-- sBC = traceFromList "S" $ map (fromList <$>) s
+
+-- -- T("a", "one"). T("b", "deux"). T("mary", "mary").
+-- t :: Multiply a => [(String, [(String, a)])]
+-- t = [ ("a", [("one", one)])
+--     , ("b", [("deux", one)])
+--     , ("mary", [("mary", one)])
+--     ]
+
+-- tAC :: Multiply a => Iter String (Iter String a)
+-- tAC = traceFromList "T" $ map (fromList <$>) t
+
+-- -- Bring them all into the same type by extending at the right columns.
+-- -- Q(a,b,c) = R(a,b) and S(b,c) and T(a,c)
+-- rABC :: Multiply a => Iter String (Iter Int (Iter k      a))
+-- sABC :: Multiply a => Iter k      (Iter Int (Iter String a))
+-- tABC :: Multiply a => Iter String (Iter k   (Iter String a))
+-- qABC :: Multiply a => Iter String (Iter Int (Iter String a))
+
+-- rABC = fmap (fmap always) rAB
+-- sABC = always sBC
+-- tABC = fmap always tAC
+
+-- -- We expect the result:
+-- --
+-- --   Q("a", 1, "one")
+-- --   Q("b", 2, "deux")
+-- --
+-- -- and this is what we see.
+-- qABC = rABC `mul` sABC `mul` tABC
+
+
 -- Let's try a triangle query!
 -- R("a", 1). R("a", 2). R("b", 1). R("b", 2).
-r :: Multiply a => [(String, [(Int, a)])]
-r = [ ("a", [(1, one), (2, one)])
-    , ("b", [(1, one), (2, one)])
-    ]
-
--- It would be nice if I could do some type magic to handle nested lists.
--- Or maybe go direct from N-tuples into nested iterators?
-rAB :: Multiply a => Iter String (Iter Int a)
-rAB = traceFromList "R" $ map (fromList <$>) r
-
 -- S(1, "one"). S(1, "wun"). S(2, "deux"). S(2, "two").
-s :: Multiply a => [(Int, [(String, a)])]
-s = [ (1, [("one", one), ("wun", one)])
-    , (2, [("deux", one), ("two", one)])
-    ]
-
-sBC :: Multiply a => Iter Int (Iter String a)
-sBC = traceFromList "S" $ map (fromList <$>) s
-
 -- T("a", "one"). T("b", "deux"). T("mary", "mary").
-t :: Multiply a => [(String, [(String, a)])]
-t = [ ("a", [("one", one)])
-    , ("b", [("deux", one)])
-    , ("mary", [("mary", one)])
-    ]
+rab :: (Additive a, Multiply a) => Trie [String,Int] a
+sbc :: (Additive a, Multiply a) => Trie [Int,String] a
+tac :: (Additive a, Multiply a) => Trie [String,String] a
+rab = relation [ ("a", 1), ("a", 2), ("b", 1), ("b", 2) ]
+sbc = relation [ (1, "one"), (1, "wun"), (2, "deux"), (2, "two") ]
+tac = relation [ ("a", "one"), ("b", "deux"), ("mary", "mary") ]
 
-tAC :: Multiply a => Iter String (Iter String a)
-tAC = traceFromList "T" $ map (fromList <$>) t
+-- Bring them all into the same type by extending at the correct columns.
+rabc, sabc, tabc, qabc :: (Additive a, Multiply a) => Trie [String,Int,String] a
+rabc = fmap (fmap always) rab
+sabc = always sbc
+tabc = fmap always tac
 
--- Bring them all into the same type by extending at the right columns.
 -- Q(a,b,c) = R(a,b) and S(b,c) and T(a,c)
-rABC :: Multiply a => Iter String (Iter Int (Iter k      a))
-sABC :: Multiply a => Iter k      (Iter Int (Iter String a))
-tABC :: Multiply a => Iter String (Iter k   (Iter String a))
-qABC :: Multiply a => Iter String (Iter Int (Iter String a))
-q    ::               Iter String (Iter Int (Iter String Int))
-
-rABC = fmap (fmap always) rAB
-sABC = always sBC
-tABC = fmap always tAC
-
--- We expect the result:
---
---   Q("a", 1, "one")
---   Q("b", 2, "deux")
---
--- and this is what we see.
-qABC = rABC `mul` sABC `mul` tABC
-q    = qABC
-
--- try: do print qResults; putStrLn "----------"; mapM_ print qResults
-qCount = contract $ contract $ contract q
-qResults = drain $ fmap drain $ fmap (fmap drain) q -- ugh. need more type magic.
--- qResults = flatten q
+qabc = rabc `mul` sabc `mul` tabc
+q :: [(Bool, (String,Int,String))]
+q = fromTrie qabc
