@@ -1,16 +1,17 @@
 BEST SO FAR
+- index_alltogethernow_minimal.hs: (posn, seek)
 - index_alltogethernow.hs: (posn, seek)
   position is either Found or Bound
   bounds are Init | Atleast | Greater | Done
 
-BEST SO FAR
+PREVIOUS BEST
 - iters_bounded_simple: (key, value, seek)
 - iters_done: (posn, seek), unifies Iter & Seek
 - iters_tristate: (posn, seek) with 3-state posn value: yes, no, notyet
 
 - iters_altogethernow
 
-PREVIOUS BESTS
+PREVIOUS PREVIOUS BESTS
 - iters: typeclass approach, bleh
 - iters_bounded: (lo,hi,value,next,seek)
 - iters_bounded3: (hi,value,next)
