@@ -1,4 +1,5 @@
 BEST SO FAR
+- alltogethernow.py: coroutines!
 - index_alltogethernow_minimal.hs: (posn, seek)
 - index_alltogethernow.hs: (posn, seek)
   position is either Found or Bound
