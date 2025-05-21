@@ -48,9 +48,7 @@ def seek_list(elems: list[tuple[object,object]]):
     while index < length:
         key, value = elems[index]
         posn = Found(key,value)
-        target = Init()
-        while target == Init(): # peek optimization
-            target = yield posn
+        target = yield posn
         if target == Greater(key): # bump optimization
             index += 1
         else:
@@ -69,10 +67,7 @@ def iter_map(f, *iters):
         if all(p.to_bound() == posn and isinstance(p, Found) for p in posns):
             posn = Found(posn.key, f(*(p.value for p in posns)))
 
-        target = Init()
-        while target == Init(): # peek optimization
-            target = yield posn
-
+        target = yield posn
         posns = []
         for it in iters:
             posn = it.send(target)
