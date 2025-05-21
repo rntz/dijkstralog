@@ -1,3 +1,16 @@
+data Iter k v = Iter { posn :: Position k v
+                     , seek :: Bound k -> Iter k v
+                     } deriving Functor
+key :: Iter k v -> Bound k
+key = atleast . posn
+
+-- An iterator has either found a particular key-value pair, or knows a lower
+-- bound on future keys.
+data Position k v = Found !k v | Bound !(Bound k) deriving (Show, Eq, Functor)
+atleast :: Position k v -> Bound k
+atleast (Found k _) = Atleast k
+atleast (Bound p)   = p
+
 -- A lower bound in a totally ordered key-space k; corresponds to some part of an
 -- ordered sequence we can seek forward to.
 data Bound k = Init | Atleast !k | Greater !k | Done deriving (Show, Eq)
@@ -10,19 +23,6 @@ instance Ord k => Ord (Bound k) where
   Atleast x <= Greater y = x <= y
   Greater x <= Atleast y = x <  y -- <== NB. the odd one out!
   Greater x <= Greater y = x <= y
-
--- An iterator has either found a particular key-value pair, or knows a lower
--- bound on future keys.
-data Position k v = Found !k v | Bound !(Bound k) deriving (Show, Eq, Functor)
-atleast :: Position k v -> Bound k
-atleast (Found k _) = Atleast k
-atleast (Bound p)   = p
-
-data Iter k v = Iter { posn :: Position k v
-                     , seek :: Bound k -> Iter k v
-                     } deriving Functor
-key :: Iter k v -> Bound k
-key = atleast . posn
 
 -- Any key-value function can be an iterator - just not a productive one.
 fromFunction :: (k -> Maybe v) -> Iter k v
