@@ -47,6 +47,7 @@ instance Ord k => Applicative (Iter k) where
 class Functor f => OuterJoin f where
   outerJoin :: (a -> c) -> (b -> c) -> (a -> b -> c) -> f a -> f b -> f c
 
+-- value-aware minimum of two positions
 instance Ord k => OuterJoin (Position k) where
   outerJoin l r b p q = case (atleast p `compare` atleast q, p, q) of
       (LT, Found k x, _)         -> Found k (l x)

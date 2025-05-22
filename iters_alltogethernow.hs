@@ -358,3 +358,61 @@ tabc = fmap always tac
 qabc = rabc `mul` sabc `mul` tabc
 q :: [(Int, (String,Int,String))]
 q = fromTrie qabc
+
+
+r :: Iter String (Iter Int Bool)
+r = fromSorted [ ("a", fromSorted [(1, True), (2, True)])
+               , ("b", fromSorted [(1, True), (2, True)])
+               ]
+s :: Iter Int (Iter String Bool)
+s = fromList [ (1, fromList [("one", True), ("wun", True)])
+             , (2, fromList [("deux", True), ("two", True)])
+             ]
+
+t :: Iter String (Iter String Bool)
+t = fromList [ ("a", fromSorted [("one", True)])
+             , ("b", fromSorted [("deux", True)])
+             , ("mary", fromSorted [("mary", True)])
+             ]
+
+triangle, r', s', t' :: Iter String (Iter Int (Iter String Bool))
+triangle = r' `mul` s' `mul` t'
+r' = fmap (fmap always) r
+s' = always s
+t' = fmap always t
+
+-- R(a,b)  and  S(b,c)  and  T(a,c)
+
+-- rt = r `mul` t
+rt, rst, rst' :: Iter String (Iter Int (Iter String Bool))
+rst = rt `mul` always s
+rt = liftA2 cross r t
+rst' = liftA2 doBC r t
+  where doBC :: Iter Int Bool -> Iter String Bool -> Iter Int (Iter String Bool)
+        doBC bs cs1 = liftA2 doC bs s where
+          doC :: Bool -> Iter String Bool -> Iter String Bool
+          doC False _ = emptyIter
+          doC True  cs2 = cs1 `mul` cs2
+
+pipe :: Functor f => f a -> (a -> b) -> f b
+pipe = flip fmap
+
+pipe2 :: Applicative f => f a -> f b -> (a -> b -> c) -> f c
+pipe2 xs ys f = liftA2 f xs ys
+
+-- GenericJoin!
+-- (this isn't monadic. but is it maybe GRADED monadic?)
+rst'' = pipe2 r t $ \bs cs1 ->
+        pipe2 bs s $ \num cs2 ->
+        scale num $
+        cs1 `mul` cs2
+
+scale :: (Ord k, Multiply a) => a -> Iter k a -> Iter k a
+-- here it would be nice to have a test for "is this zero", because then we can
+-- just ignore `iter` and return emptyIter.
+scale x iter = fmap (mul x) iter
+
+-- This needs Multiply because we need to know how to combine the values.
+-- again, feels GRADED monadic. we are "binding keys" as an effect.
+cross :: (Ord k1, Ord k2, Multiply v) => Iter k1 v -> Iter k2 v -> Iter k1 (Iter k2 v)
+cross bs cs = pipe bs $ \v -> pipe cs $ \u -> mul v u
