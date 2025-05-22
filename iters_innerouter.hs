@@ -58,20 +58,6 @@ instance Ord k => Applicative (Iter k) where
   pure x = fromFunction (\_ -> Just x)
   liftA2 = join Nothing Nothing
 
--- NOTES ON SIDEWAYS INFORMATION PASSING:
---
--- This implementation does no sideways information passing within `seek`, only between iterative
--- calls to `seek`. This doesn't affect asymptotics but does affect constant factors.
---
--- In full outer joins, no information passing is possible. The only possible optimisation is
--- short-circuiting: don't seek iterators that are already above the desired bound.
---
--- In a half-outer join between X & Y where we want ALL keys from X, but only those from Y that
--- match one in X, we can propagate information from X to Y but not vice-versa.
---
--- In inner joins, all information can be passed sideways; whichever iterator we seek first, its
--- result can be passed to the next.
-
 
 -- NB. We can't actually seek efficiently in a Haskell list.
 fromSorted :: Ord k => [(k,v)] -> Iter k v
