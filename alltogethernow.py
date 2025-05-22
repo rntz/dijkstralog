@@ -56,9 +56,6 @@ def seek_list(elems: list[tuple[object,object]]):
                                        key=lambda x: Atleast(x[0]))
     while True: yield Done()
 
-nums = [ (1, "one"), (2, "two"), (3, "three"), (4, "four"), (5, "five") ]
-t = seek_list(nums)
-
 def iter_map(f, *iters):
     assert len(iters)           # don't handle zero-ary case yet.
     posns = [next(it) for it in iters]
@@ -98,3 +95,6 @@ def iter_outer_join(f, *iters, default=None):
         posns = [it.send(target) for it in iters]
 
     while True: yield Done()
+
+nums = [ (1, "one"), (2, "two"), (3, "three"), (4, "four"), (5, "five") ]
+t = seek_list(nums)
