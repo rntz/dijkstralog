@@ -1,4 +1,6 @@
 BEST SO FAR
+- iters_innerouter.hs
+
 - alltogethernow.py: coroutines!
 - index_alltogethernow_minimal.hs: (posn, seek)
 - index_alltogethernow.hs: (posn, seek)
