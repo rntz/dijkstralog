@@ -44,15 +44,30 @@ instance Ord k => Joinable (Iter k) where
                            | otherwise    = (seek s k,          seek t k)
 
 instance Ord k => Joinable (Position k) where
-  join ifleft ifright ifboth p q = case (atleast p `compare` atleast q, p, q) of
-    (EQ, Found k x, Found _ y)             -> Found k (ifboth x y)
-    (LT, Found k x, _) | Just f <- ifleft  -> Found k (f x)
-    (GT, _, Found k y) | Just f <- ifright -> Found k (f y)
-    _ -> Bound $ case (ifleft, ifright) of
-                   (Just _,  Just _)  -> atleast p `min` atleast q -- full outer join
-                   (Nothing, Nothing) -> atleast p `max` atleast q -- inner join
-                   (Just _,  Nothing) -> atleast p                 -- want everything from p
-                   (Nothing, Just _)  -> atleast q                 -- want everything from q
+  join l r b p q = case atleast p `compare` atleast q of
+                     LT -> maybe (Bound $ atleast q) (<$> p) l
+                     GT -> maybe (Bound $ atleast p) (<$> q) r
+                     EQ | Found k x <- p, Found _ y <- q -> Found k (b x y)
+                        | otherwise -> Bound (atleast p)
+
+  -- join l r b p q = case atleast p `compare` atleast q of
+  --                    LT -> lessThan p q l
+  --                    GT -> lessThan q p r
+  --                    EQ -> equal
+  --   where lessThan p q (Just f) = f <$> p
+  --         lessThan p q Nothing  = Bound $ atleast q
+  --         equal | Found k x <- p, Found _ y <- q = Found k (b x y)
+  --               | otherwise                      = Bound (atleast p)
+
+  -- join l r b p q = case (atleast p `compare` atleast q, p, q) of
+  --   (EQ, Found k x, Found _ y)               -> Found k (b x y)
+  --   (LT, Found k x, _        ) | Just f <- l -> Found k (f x)
+  --   (GT, _        , Found k y) | Just f <- r -> Found k (f y)
+  --   _ -> Bound $ case (l, r) of
+  --                  (Just _,  Just _)  -> atleast p `min` atleast q -- full outer join
+  --                  (Nothing, Nothing) -> atleast p `max` atleast q -- inner join
+  --                  (Just _,  Nothing) -> atleast p                 -- want everything from p
+  --                  (Nothing, Just _)  -> atleast q                 -- want everything from q
 
 instance Ord k => Applicative (Iter k) where
   pure x = fromFunction (\_ -> Just x)
