@@ -6,7 +6,9 @@ key = atleast . posn
 
 -- An iterator has either found a particular key-value pair, or knows a lower
 -- bound on future keys.
-data Position k v = Found !k v | Bound !(Bound k) deriving (Show, Eq, Functor)
+data Position k v = Found !k v
+                  | Bound !(Bound k)
+                    deriving (Show, Eq, Functor)
 atleast :: Position k v -> Bound k
 atleast (Found k _) = Atleast k
 atleast (Bound p)   = p
@@ -34,6 +36,7 @@ fromFunction f = seek Init
 -- Inner joins, ie generalized intersection. liftA2 is productive if either argument is.
 instance Ord k => Applicative (Iter k) where
   pure x = fromFunction (\_ -> Just x)
+  liftA2 :: (a -> b -> c) -> Iter k a -> Iter k b -> Iter k c
   liftA2 f s t = Iter posn' seek'
     where posn' | Found k x <- posn s, Found k' y <- posn t, k == k' = Found k (f x y)
                 | otherwise                                          = Bound (key s `max` key t)
@@ -45,7 +48,8 @@ instance Ord k => Applicative (Iter k) where
 
 -- Outer joins, ie generalized union.
 class Functor f => OuterJoin f where
-  outerJoin :: (a -> c) -> (b -> c) -> (a -> b -> c) -> f a -> f b -> f c
+  outerJoin :: (a -> c) -> (b -> c) -> (a -> b -> c)
+            -> f a -> f b -> f c
 
 -- value-aware minimum of two positions
 instance Ord k => OuterJoin (Position k) where
