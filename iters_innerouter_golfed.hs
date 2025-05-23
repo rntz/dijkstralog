@@ -26,12 +26,6 @@ join l r b s t = Iter posn' seek'
                          | Nothing <- l = (seek s (bound t'), seek t k)
                          | otherwise    = (seek s k,          seek t k)
 
-instance Ord k => Applicative (Iter k) where
-  liftA2 = join Nothing Nothing
-  pure x = seek Init where
-    seek (Atleast k) = Iter (Found k x) seek
-    seek p           = Iter (Bound p)   seek
-
 fromSorted :: Ord k => [(k,v)] -> Iter k v
 fromSorted l = Iter posn seek
   where posn = case l of [] -> Bound Done; ((k,v):_) -> Found k v
