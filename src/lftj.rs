@@ -1,145 +1,108 @@
-// ---------- SEEKABLE ITERATORS ----------
-pub trait Seek: Iterator {
-    fn empty(&self) -> bool;
-    // precondition for key() and advance(): !self.empty()
-    fn key(&self) -> Self::Item;
-    fn advance(&mut self);
-    // seek() does not require !self.empty().
-    fn seek(&mut self, key: Self::Item);
+use std::mem;
 
-    fn here(&self) -> Option<Self::Item> {
-        if self.empty() { None } else { Some(self.key()) }
+// Non-empty forward-seekable iterators.
+pub trait Seek: Sized {
+    type Key: Ord;
+    type Value;
+    fn key(&self) -> Self::Key;
+    fn value(&self) -> Self::Value;
+    fn next(self) -> Option<Self>;
+    fn seek(self, key: &Self::Key) -> Option<Self>;
+}
+
+#[allow(unused)]
+struct SeekIter<T>(Option<T>);
+impl<T: Seek> Iterator for SeekIter<T> {
+    type Item = (T::Key, T::Value);
+    fn next(&mut self) -> Option<Self::Item> {
+        let seek = self.0.take()?;
+        let result = (seek.key(), seek.value());
+        self.0 = seek.next();
+        return Some(result);
     }
-}
-
-// an implementation of Iterator::next() in terms of Seek::{done,key,advance}.
-fn seek_next<T: Seek>(this: &mut T) -> Option<T::Item> {
-    if this.empty() { return None }
-    let elem = this.key();
-    this.advance();
-    return Some(elem);
-}
-
-// ensure (&mut dyn Seek) implements Seek
-impl<S: Seek + ?Sized> Seek for &mut S {
-    #[inline] fn empty(&self) -> bool { (**self).empty() }
-    #[inline] fn key(&self) -> S::Item { (**self).key() }
-    #[inline] fn advance(&mut self) { (**self).advance() }
-    #[inline] fn seek(&mut self, key: S::Item) { (**self).seek(key) }
-    #[inline] fn here(&self) -> Option<S::Item> { (**self).here() }
 }
 
 
 // ---------- Seekable iterator over a sorted slice ----------
-pub struct SliceSeek<'a, T> {
-    // invariant: elems is sorted
-    elems: &'a [T],
+struct SliceSeek<'a, K, V> {
+    elems: &'a [(K,V)],
     posn: usize,
 }
 
-impl<'a, T: Ord> SliceSeek<'a, T> {
-    pub fn new(list: &'a [T]) -> Self {
-        debug_assert!(list.is_sorted());
-        SliceSeek { elems: list, posn: 0 }
-    }
-}
+impl<'a, K: Ord, V> Seek for SliceSeek<'a, K, V> {
+    type Key = &'a K;
+    type Value = &'a V;
 
-impl<'a, T: Ord> Iterator for SliceSeek<'a, T> {
-    type Item = &'a T;
-    fn next(&mut self) -> Option<&'a T> { seek_next(self) }
-}
+    fn key(&self) -> &'a K { &self.elems[self.posn].0 }
+    fn value(&self) -> &'a V { &self.elems[self.posn].1 }
 
-impl<'a, T: Ord> Seek for SliceSeek<'a, T> {
-    fn empty(&self) -> bool { self.posn >= self.elems.len() }
-
-    fn key(&self) -> &'a T {
-        debug_assert!(!self.empty());
-        &self.elems[self.posn]
-    }
-
-    fn advance(&mut self) {
-        debug_assert!(!self.empty());
+    fn next(mut self) -> Option<Self> {
         self.posn += 1;
+        if self.posn < self.elems.len() { Some(self) } else { None }
     }
 
-    fn seek(&mut self, key: &T) {
-        debug_assert!(self.posn <= self.elems.len());
-        self.posn += self.elems[self.posn..].partition_point(|x| x < key);
-        debug_assert!(self.posn <= self.elems.len());
-        debug_assert!(self.posn == self.elems.len() || key <= &self.elems[self.posn]);
+    fn seek(mut self, key: &&'a K) -> Option<Self> {
+        self.posn += self.elems[self.posn..].partition_point(|x| x.0 < **key);
+        if self.posn < self.elems.len() { Some(self) } else { None }
     }
 }
 
 
 // ---------- LEAPFROG INTERSECTION ----------
-pub struct Leapfrog<Iter>(Option<(usize, Vec<Iter>)>);
+pub struct Leapfrog<'a, Iter> {
+    // invariant: all iterators are at the same key.
+    iter: Iter,
+    iters: &'a mut [Iter],
+    posn: usize,
+}
 
-fn leapfrog_search<I: Seek>(mut index: usize, mut iters: Vec<I>) -> Option<(usize, Vec<I>)>
-where I::Item: Eq
-{
-    let n = iters.len();
-    let mut hi = iters[if index>0 {index-1} else {n-1}].key();
-    loop {
-        let iter = &mut iters[index];
-        if hi == iter.key() { // all iters at same key
-            return Some((index, iters));
+impl<'a, Iter: Seek> Leapfrog<'a, Iter> {
+    // After advancing self.iter.key(), call search() to brings all iterators to
+    // the same key, restoring our invariant.
+    fn search(mut self) -> Option<Self> {
+        let mut key = self.iter.key();
+        let count = self.iters.len();
+        let mut n = count;      // we count down to 0
+        while n != 0 {
+            // Swap the next iterator into "focus" (into self.iter).
+            mem::swap(&mut self.iter, &mut self.iters[self.posn]);
+            self.posn = (self.posn + 1) % self.iters.len();
+            // Seek forward and check whether we have another match or need to
+            // reset our count.
+            self.iter = self.iter.seek(&key)?;
+            let old_key = key;
+            key = self.iter.key();
+            n = if key == old_key { n - 1 } else { count };
         }
-        // Hm, if seek() returned an Option<K> this would work fine? but
-        // we'd have to get the same value again when we called next(); we
-        // don't want to advance _past_ the element.
-        iter.seek(hi);
-        if iter.empty() { return None; }
-        hi = iter.key();
-        index = (index + 1) % n;
+        Some(self)
     }
 }
 
-impl<I: Seek> Leapfrog<I> where I::Item: Ord {
-    // shouldn't I be able to implement this for any IntoIter thing?
-    pub fn new(mut iters: Vec<I>) -> Self {
-        // Intersecting nothing would produce "universal" relation, which I
-        // can't represent efficiently.
-        assert!(0 < iters.len());
-        // If any iterator is already done, so are we.
-        if iters.iter().any(|x| x.empty()) { return Leapfrog(None) }
-        iters.sort_by_key(|it| it.key());
-        return Leapfrog(leapfrog_search(0, iters))
-    }
-}
+impl<'a, Iter: Seek> Seek for Leapfrog<'a, Iter> {
+    type Key = Iter::Key;
+    type Value = Box<[Iter::Value]>;
 
-impl<S: Seek> Iterator for Leapfrog<S> where S::Item: Ord {
-    type Item = S::Item;
-    fn next(&mut self) -> Option<S::Item> { seek_next(self) }
-}
+    // If we had a monoid instance on Iter::Value, we could maybe do this:
+    // type Value = Iter::Value;
 
-impl<S: Seek> Seek for Leapfrog<S> where S::Item: Ord {
-    fn empty(&self) -> bool { self.0.is_none() }
+    fn key(&self) -> Iter::Key { self.iter.key() }
 
-    fn key(&self) -> S::Item {
-        debug_assert!(!self.empty());
-        let (index, iters) = self.0.as_ref().unwrap();
-        iters[*index].key()
+    fn value(&self) -> Box<[Iter::Value]> {
+        self.iters[0..self.posn]
+            .iter()
+            .map(|it| it.value())
+            .chain(std::iter::once(self.iter.value()))
+            .chain(self.iters[self.posn..].iter().map(|it| it.value()))
+            .collect()
     }
 
-    fn here(&self) -> Option<S::Item> {
-        let (index, iters) = self.0.as_ref()?;
-        Some(iters[*index].key())
+    fn next(mut self) -> Option<Self> {
+        self.iter = self.iter.next()?;
+        self.search()
     }
 
-    fn advance(&mut self) {
-        debug_assert!(!self.empty());
-        let (index, mut iters) = self.0.take().unwrap();
-        let iter = &mut iters[index];
-        iter.advance();
-        if !iter.empty() {
-            self.0 = leapfrog_search((index+1) % iters.len(), iters)
-        }
-    }
-
-    fn seek(&mut self, key: S::Item) {
-        if let Some ((index, mut iters)) = self.0.take() {
-            iters[index].seek(key);
-            self.0 = leapfrog_search((index + 1) % iters.len(), iters);
-        }
+    fn seek(mut self, key: &Iter::Key) -> Option<Self> {
+        self.iter = self.iter.seek(key)?;
+        self.search()
     }
 }

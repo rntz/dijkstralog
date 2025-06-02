@@ -271,13 +271,13 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterJoin<X,Y> {
 }
 
 
-// ---------- TRIES?? ----------
-trait Unsplit { type First; type Rest; fn unsplit(k: Self) -> (Self::First, Self::Rest); }
+// // ---------- TRIES?? ----------
+// trait Unsplit { type First; type Rest; fn unsplit(k: Self) -> (Self::First, Self::Rest); }
 
-impl<X> Unsplit for (X) {
-    type First = X; type Rest = ();
-    fn unsplit(x: (X)) -> (X,()) { (x.0, ()) }
-}
+// impl<X> Unsplit for (X) {
+//     type First = X; type Rest = ();
+//     fn unsplit(x: (X)) -> (X,()) { (x.0, ()) }
+// }
 
 
 // // Addition.
