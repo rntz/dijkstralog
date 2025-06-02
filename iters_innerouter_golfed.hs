@@ -1,4 +1,4 @@
-data Iter k v = Iter { posn :: Position k v , seek :: Bound k -> Iter k v } deriving Functor
+data Iter k v = Iter { posn :: Position k v, seek :: Bound k -> Iter k v } deriving Functor
 data Position k v = Found !k v | Bound !(Bound k) deriving (Show, Eq, Functor)
 data Bound k = Init | Atleast !k | Greater !k | Done deriving (Show, Eq)
 

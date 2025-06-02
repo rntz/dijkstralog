@@ -364,6 +364,7 @@ r :: Iter String (Iter Int Bool)
 r = fromSorted [ ("a", fromSorted [(1, True), (2, True)])
                , ("b", fromSorted [(1, True), (2, True)])
                ]
+
 s :: Iter Int (Iter String Bool)
 s = fromList [ (1, fromList [("one", True), ("wun", True)])
              , (2, fromList [("deux", True), ("two", True)])
