@@ -1,6 +1,7 @@
 import io
 import sys
 import bisect
+from typing import Any
 
 # ----- FORWARD-SEEKABLE ITERATORS -----
 class Iter:
@@ -9,7 +10,8 @@ class Iter:
     # advances, returns self.done()
     # precondition: not self.done()
     def next(self) -> bool: raise NotImplementedError
-    # seeks to first element >= the given key, returns self.done()
+    # seeks to next element >= the given key, returns self.done()
+    # does not move backward, even self.key() < key.
     # precondition: not self.done()
     def seek(self, key) -> bool: raise NotImplementedError
 
@@ -105,6 +107,7 @@ class Leapfrog(Iter):
 class TrieIter(Iter,Filter):
     def leave(self): raise NotImplementedError
     # precondition: not self.done()
+    # TODO: should return self.done()
     def enter(self): raise NotImplementedError
 
     # levels() returns a list with one element per trie levels. Each element is
@@ -160,7 +163,14 @@ class TrieFn(TrieIter):
     def levels(self): return [Filter] * self.n + [Iter]
     def level(self): return self.depth
     def enter(self):
-        assert self.depth + 1 in [-1, len(self.args)]
+        # print(f"n     {self.n:2}")
+        # print(f"depth {self.depth:2}")
+        # print(f"args  {self.args}   length {len(self.args)}")
+
+        # We must have arguments before descending to the next level. For
+        # instance, depth 0 = first argument, so we should have 1 argument
+        # before entering depth 2.
+        assert self.depth + 1 == len(self.args)
         self.depth += 1
         if self.depth == self.n:
             self.value = self.f(*self.args)
@@ -252,6 +262,11 @@ class TrieJoin(TrieIter):
         for iter in self.iters[self.depth] + self.filters[self.depth]:
             iter.enter()
         self.frogs.append(Leapfrog(*self.iters[self.depth]))
+        # Initialize the filters. TODO: maybe this logic belongs in Leapfrog? It
+        # was a bit tricky to get it right!
+        while not self.frogs[-1].done():
+            if self._accept(self.key()):
+                break
 
     def leave(self):
         assert -1 < self.depth <= self.max_level()
@@ -503,9 +518,9 @@ class SortedListTrie(TrieIter):
 
         (start, end) = self.region
         assert start != end
-        # Exit if we're already at `key`.
+        # Exit if we're already at or beyond `key`.
         current_key = self.sorted_list[start][depth]
-        if key == current_key: return False
+        if current_key >= key: return False
 
         (outer_start, outer_end) = self.bounds[-1]
         assert outer_start <= start <= end <= outer_end
