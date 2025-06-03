@@ -167,12 +167,12 @@ pub trait Additive<Rhs> {
 
 
 // ---------- SEEKING IN SORTED LISTS ----------
-struct SliceSeek<'a, K, V> {
+struct Slice<'a, K, V> {
     elems: &'a [(K, V)],
     index: usize,
 }
 
-impl<'a, K: Ord, V> Seek for SliceSeek<'a, K, V> {
+impl<'a, K: Ord, V> Seek for Slice<'a, K, V> {
     type Key = &'a K;
     type Value = &'a V;
 
@@ -189,7 +189,7 @@ impl<'a, K: Ord, V> Seek for SliceSeek<'a, K, V> {
 
 
 // ---------- SEEKING RANGES IN SORTED LISTS ----------
-pub struct SliceRangeSeek<'a, X, F> {
+pub struct SliceRange<'a, X, F> {
     elems: &'a [X],
     index_lo: usize,
     index_hi: usize,
@@ -198,9 +198,9 @@ pub struct SliceRangeSeek<'a, X, F> {
 
 use std::fmt;
 
-impl<'a, X, F> fmt::Debug for SliceRangeSeek<'a, X, F> {
+impl<'a, X, F> fmt::Debug for SliceRange<'a, X, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        f.debug_struct("SliceRangeSeek")
+        f.debug_struct("SliceRange")
             .field("index_lo", &self.index_lo)
             .field("index_hi", &self.index_hi)
             // .field("elems", &self.elems)
@@ -208,9 +208,9 @@ impl<'a, X, F> fmt::Debug for SliceRangeSeek<'a, X, F> {
     }
 }
 
-impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> SliceRangeSeek<'a, X, F> {
-    pub fn new(elems: &'a [X], get_key: F) -> SliceRangeSeek<'a, X, F> {
-        let mut s = SliceRangeSeek { elems, index_lo: 0, index_hi: 0, get_key };
+impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> SliceRange<'a, X, F> {
+    pub fn new(elems: &'a [X], get_key: F) -> SliceRange<'a, X, F> {
+        let mut s = SliceRange { elems, index_lo: 0, index_hi: 0, get_key };
         s.seek_hi();
         s
     }
@@ -224,7 +224,7 @@ impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> SliceRangeSeek<'a, X, F> {
     }
 }
 
-impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> Seek for SliceRangeSeek<'a, X, F> {
+impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> Seek for SliceRange<'a, X, F> {
     type Key = K;
     type Value = &'a [X];
 

@@ -12,7 +12,7 @@ use iters::{
     Position::{*},
     Bound,
     Bound::{*},
-    SliceRangeSeek,
+    SliceRange,
     Seek,
 };
 
@@ -20,7 +20,7 @@ fn main() {
     println!("hello world!");
 
     let xs: &[(isize, &str)] = &[(1, "one"), (1, "wun"), (2, "two"), (2, "deux")];
-    let mut it = SliceRangeSeek::new(xs, |x| x.0);
+    let mut it = SliceRange::new(xs, |x| x.0);
 
     loop {
         let p = it.posn();
