@@ -74,9 +74,9 @@ fn example2() {
     println!("rtrie: {rtrie:?}");
 
     // Let's plan a triangle query!
-    // this involves many sacrifices to the borrow checking gods.
+    // this requires we pay obeisance to the borrow checking gods.
     // I worry about what the closures look like...
-    // but I expect disassembly to produce far too much code to inspect by hand.
+    // I should try disassembly, but it might be too big to understand.
     let triangle_it =
         r_.join(t_)
         .map(move |(r_a, t_a)| {
@@ -98,9 +98,43 @@ fn example2() {
     println!("vs: {vs:?}");
 }
 
+// EXAMPLE 3: TRIANGLE QUERY WITH LESS CEREMONY
+fn example3() {
+    let r: &[(&str, isize)] = &[("a", 1), ("a", 2), ("b", 1), ("b", 2)];
+    let s: &[(isize, &str)] = &[(1, "one"), (1, "wun"), (2, "deux"), (2, "two")];
+    let t: &[(&str, &str)]  = &[("a", "one"), ("b", "deux"), ("mary", "mary")];
+    assert!(r.is_sorted());
+    assert!(s.is_sorted());
+    assert!(t.is_sorted());
+
+    // Let's plan a triangle query!
+    let triangle_it =
+        SliceRange::new(r, |x| x.0)
+        .join(SliceRange::new(t, |x| x.0))
+        .map(|(r_a, t_a)| {
+            SliceRange::new(r_a, |x| x.1)
+                .join(SliceRange::new(s, |x| x.0))
+                .map(|(r_ab, s_b)| {
+                    SliceRange::new(s_b, |x| x.1)
+                        .join(SliceRange::new(t_a, |x| x.1))
+                        .map(|_| ())
+                })
+        });
+
+    let vs = triangle_it
+        .collect_with(|a, tuples| {
+            (*a, tuples.collect_with(|b, tuples| {
+                (*b, tuples.collect_with(|c, ()| *c))
+            }))
+        });
+    println!("vs: {vs:?}");
+}
+
 fn main() {
     println!("hello world!");
     example1();
     println!();
     example2();
+    println!();
+    example3();
 }
