@@ -130,6 +130,28 @@ pub trait Seek {
     fn outer_join<U>(self, other: U) -> OuterJoin<Self, U>
     where Self: Sized, U: Seek<Key=Self::Key>
     { OuterJoin(self, other) }
+
+    fn collect_with<X, F>(mut self, mut func: F) -> Vec<X>
+    where Self: Sized,
+          F: FnMut(&Self::Key, Self::Value) -> X
+    {
+        let mut xs = Vec::new();
+        loop {
+            match self.posn() {
+                Have(k,v) => {
+                    xs.push(func(&k,v));
+                    self.seek(&Greater(k));
+                }
+                Know(Done) => break,
+                Know(p) => self.seek(&p),
+            }
+        }
+        return xs;
+    }
+
+    fn collect(mut self) -> Vec<(Self::Key, Self::Value)> where Self: Sized {
+        self.collect_with(|k,v| (k.clone(), v))
+    }
 }
 
 pub trait Additive<Rhs> {
@@ -165,8 +187,10 @@ pub trait Additive<Rhs> {
 //     }
 // }
 
+
 
 // ---------- SEEKING IN SORTED LISTS ----------
+#[derive(Clone)]
 struct Slice<'a, K, V> {
     elems: &'a [(K, V)],
     index: usize,
@@ -189,6 +213,7 @@ impl<'a, K: Ord, V> Seek for Slice<'a, K, V> {
 
 
 // ---------- SEEKING RANGES IN SORTED LISTS ----------
+#[derive(Clone)]
 pub struct SliceRange<'a, X, F> {
     elems: &'a [X],
     index_lo: usize,
@@ -245,6 +270,7 @@ impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> Seek for SliceRange<'a, X, F> {
 
 
 // ---------- MAP ----------
+#[derive(Clone)]
 pub struct Map<Iter, F> { iter: Iter, func: F }
 
 impl<B, Iter, F> Seek for Map<Iter,F> where
