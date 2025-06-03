@@ -17,7 +17,7 @@
 #
 # 1 Projection of middle variables probably requires materialization?
 #
-#     R'(b) = R(a,b)
+#     R'(b) = Σa. R(a,b)
 #
 #   Because we need to union/sum all the sub-iterators R(a,_).
 #   There are dynamically many of these.
@@ -28,13 +28,18 @@
 #   (This is an interesting strategy! Is it useful, though?)
 #
 # 1a
-#   Under boolean semantics, we can project from the end as a special case.
 #
-#     R'(a,b) = R(a,b,c,d,e)
+#   Projections from the end, however, can be done with minimal state by just
+#   accumulating into a semiring value:
+#
+#     R'(a) = Σb. R(a,b)
+#
+#   And in the Boolean case, we even get short-circuiting!
+#
+#     R'(a,b) = Σc,d,e. R(a,b,c,d,e)
 #
 #   Because for fixed a,b we just need to check whether {x,y,z : R(a,b,x,y,z) }
 #   is nonempty. Of course, this requires R be able to ground c,d,e.
-#   And it's boolean-specific; in general we need to sum/aggregate.
 
 module Iters
 
