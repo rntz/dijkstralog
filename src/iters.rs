@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 // use core::ops::{Add,Mul};
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Bound<K> { Init, Atleast(K), Greater(K), Done }
 use Bound::*;
 
@@ -27,15 +27,15 @@ impl<K: Ord> Ord for Bound<K> {
 }
 
 impl<K: Ord> Bound<K> {
-    fn matches(&self, other: K) -> bool { self <= &Atleast(other) }
+    pub fn matches(&self, other: K) -> bool { self <= &Atleast(other) }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum Position<K, V> { Have(K, V), Know(Bound<K>) }
 use Position::*;
 
 impl<K: Ord, V> Position<K, V> {
-    fn inner_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, (V,U)> {
+    pub fn inner_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, (V,U)> {
         match (self, other) {
             (Have(k, x), Have(k2, y)) if k == k2 => Have(k, (x, y)),
             (p, q) => Know(p.to_bound().max(q.to_bound())),
@@ -44,7 +44,7 @@ impl<K: Ord, V> Position<K, V> {
 }
 
 impl<K: Ord + Clone, V> Position<K, V> {
-    fn outer_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, Outer<V, U>> {
+    pub fn outer_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, Outer<V, U>> {
         match self.bound().cmp(&other.bound()) {
             Ordering::Less    => self.map(|v| Left(v)),
             Ordering::Greater => other.map(|v| Right(v)),
@@ -57,7 +57,7 @@ impl<K: Ord + Clone, V> Position<K, V> {
 }
 
 impl<K: Clone, V> Position<K, V> {
-    fn bound(&self) -> Bound<K> {
+    pub fn bound(&self) -> Bound<K> {
         match self {
             Have(k, _) => Atleast(k.clone()),
             Know(p)    => p.clone(),
@@ -66,14 +66,14 @@ impl<K: Clone, V> Position<K, V> {
 }
 
 impl<K, V> Position<K, V> {
-    fn to_bound(self) -> Bound<K> {
+    pub fn to_bound(self) -> Bound<K> {
         match self {
             Have(k, _) => Atleast(k),
             Know(p)    => p,
         }
     }
 
-    fn map<U, F>(self, f: F) -> Position<K, U>
+    pub fn map<U, F>(self, f: F) -> Position<K, U>
     where F: FnOnce(V) -> U {
         match self {
             Know(p) => Know(p),
@@ -89,7 +89,7 @@ impl<K, V> Position<K, V> {
     //     }
     // }
 
-    fn filter_map<U, F>(self, f: F) -> Position<K, U>
+    pub fn filter_map<U, F>(self, f: F) -> Position<K, U>
     where F : FnOnce(&K, V) -> Option<U> {
         match self {
             Know(p) => Know(p),
