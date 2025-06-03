@@ -188,8 +188,60 @@ impl<'a, K: Ord, V> Seek for SliceSeek<'a, K, V> {
 }
 
 
-// ---------- TRIE ITERATOR OVER SORTED SLICES? HOW? ----------
-// does Rust have splatting of tuples?
+// ---------- SEEKING RANGES IN SORTED LISTS ----------
+pub struct SliceRangeSeek<'a, X, F> {
+    elems: &'a [X],
+    index_lo: usize,
+    index_hi: usize,
+    get_key: F,
+}
+
+use std::fmt;
+
+impl<'a, X, F> fmt::Debug for SliceRangeSeek<'a, X, F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        f.debug_struct("SliceRangeSeek")
+            .field("index_lo", &self.index_lo)
+            .field("index_hi", &self.index_hi)
+            // .field("elems", &self.elems)
+            .finish()
+    }
+}
+
+impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> SliceRangeSeek<'a, X, F> {
+    pub fn new(elems: &'a [X], get_key: F) -> SliceRangeSeek<'a, X, F> {
+        let mut s = SliceRangeSeek { elems, index_lo: 0, index_hi: 0, get_key };
+        s.seek_hi();
+        s
+    }
+
+    // adjusts self.index_hi to the end of the region that self.index_lo begins.
+    fn seek_hi(&mut self) {
+        self.index_hi = self.index_lo + if self.index_lo >= self.elems.len() { 0 } else {
+            let key = (self.get_key)(&self.elems[self.index_lo]);
+            self.elems[self.index_lo..].partition_point(|x| (self.get_key)(x) == key)
+        };
+    }
+}
+
+impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> Seek for SliceRangeSeek<'a, X, F> {
+    type Key = K;
+    type Value = &'a [X];
+
+    fn posn(&self) -> Position<K, &'a [X]> {
+        if self.index_lo >= self.elems.len() { return Know(Done) }
+        let key = (self.get_key)(&self.elems[self.index_lo]);
+        let xs = &self.elems[self.index_lo .. self.index_hi];
+        return Have(key, xs);
+    }
+
+    fn seek(&mut self, target: &Bound<K>) {
+        self.index_lo = self.index_hi + self.elems[self.index_hi..].partition_point(
+            |x| !target.matches((self.get_key)(x))
+        );
+        self.seek_hi()
+    }
+}
 
 
 // ---------- MAP ----------
