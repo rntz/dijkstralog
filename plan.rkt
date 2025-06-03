@@ -1,7 +1,11 @@
 #lang racket
 
+(require racket/set)
+
 (define-syntax-rule (todo) (error "todo"))
-(define (assert! test) (unless test (error "ASSERTION FAILURE")))
+(define-syntax-rule (assert! test)
+  (unless test
+    (error "ASSERTION FAILURE:" 'test)))
 
 (define atom-pred car)
 (define atom-args cdr)
@@ -30,12 +34,16 @@
 ;; (compile var-order query) --> (values query-plan decls)
 ;; decls: a list of indices that we need for this query
 (define (compile var-order query)
-  (define decls '())
+  (assert! (= (length var-order) (set-count (list->set var-order))))
+  (assert! (for*/and ([atom query] [x (atom-args atom)] #:when (var? x))
+             (member x var-order)))
+
   ;; NOTE/TODO: we could get rid of constants and duplicated variables up front
   ;; (as operations on trie iterators), instead of pushing that work through.
   ;; That would avoid the need to handle it separately in each of
   ;; sorting-and-projection and conjunctive-querying.
-  (define query-ordered
+  (define decls '())
+  (define query-sorted
     (for/list ([atom query])
       (define atom-vars (filter var? (atom-args atom)))
       (if (subsequence atom-vars var-order) atom
@@ -47,27 +55,63 @@
                  [sort-decl `(sort ,new-atom ,atom)])
             (set! decls (cons sort-decl decls))
             new-atom))))
-  ;; tracks our progress through each iterator in the query
-  (define iter-states
-    (for/list ([atom query-ordered])
+
+  ;; mutable local vars for planning query
+  (define vars-seen (mutable-set))
+  (define reverse-query-plan '())
+  (define iter-states ;; tracks each trie iterator's progress into its relation
+    (for/list ([atom query-sorted])
       (mcons (atom-pred atom) (atom-args atom))))
-  (define query-plan
-   (for/list ([var var-order])
-     ;; Find the relations which touch this variable and inner join them.
-     `(,var <-
-            join
-            ,@(for/list ([iter iter-states]
-                         #:when (member var (mcdr iter)))
-                ;; TODO: do any constant (or repeated var) lookups necessary to
-                ;; expose the variable.
-                (assert! (equal? var (car (mcdr iter))))
-                (set-mcdr! iter (cdr (mcdr iter)))
-                (mcar iter) ;; TODO WRONG
-                ))
-     ))
-  (values query-plan decls))
+
+  (define (plan-push! x) (set! reverse-query-plan (cons x reverse-query-plan)))
+  (define (lookups!)
+    (for ([iter-state iter-states])
+      (define-values (lookups leftover)
+        (splitf-at (mcdr iter-state)
+                   (λ (x) (or (not (var? x)) (set-member? vars-seen x)))))
+      (set-mcdr! iter-state leftover)
+      (for ([x lookups])
+        (plan-push! `(lookup ,(mcar iter-state) ,x)))))
+
+  ;; Plan the query.
+  (lookups!)
+  (for ([var var-order])
+    (set-add! vars-seen var)
+    ;; Find the relations which touch this variable and inner join them.
+    (define join-iters
+      (for/list ([iter-state iter-states]
+                 #:do [(match-define (mcons iter iter-args) iter-state)]
+                 #:when (not (null? iter-args))
+                 #:when (equal? var (car iter-args)))
+        (set-mcdr! iter-state (cdr iter-args))
+        iter))
+    (plan-push! `(,var <- join ,@join-iters))
+    (lookups!))
+
+  (values (reverse reverse-query-plan) decls))
+
+;; Compiles a single atom to a query plan, deriving the variable order from the
+;; atom. Doesn't need any additional decls. Used for planning sorts.
+(define (compile-atom atom)
+  (define vars-seen (mutable-set))
+  (define var-order
+    (for/list ([x (atom-args atom)]
+               #:when (var? x)
+               #:when (not (set-member? vars-seen x)))
+      (set-add! vars-seen x)
+      x))
+  (define-values (plan decls) (compile var-order `(,atom)))
+  (assert! (null? decls))
+  plan)
 
 (module+ tests
+  ;; triangle query with a lookup in T.
+  (compile '(a b c) '((R a b) (S b c) (T a 17 c)))
+  ;; make sure it generates a sort-and-project step for T.
   (compile '(a b c) '((R a b) (S b c) (T c 17 a)))
-  (compile '(a b c) '((R a b) (S b c) (T a 17 c))) ;; FAILING ASSERT
+  ;; make sure it looks up the second b in S.
+  (compile '(a b c) '((R a b) (S b b) (T a 17 c)))
+
+  ;; make sure we can compile a sort body.
+  (compile-atom '(T c 17 a))
   )
