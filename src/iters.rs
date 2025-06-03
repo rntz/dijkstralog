@@ -322,6 +322,28 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterJoin<X,Y> {
     }
 }
 
+// Outers can also be outer joined.
+impl<X: Seek, Y:Seek<Key=X::Key>> Seek for Outer<X,Y> {
+    type Key   = X::Key;
+    type Value = Outer<X::Value, Y::Value>;
+
+    fn posn(&self) -> Position<X::Key, Outer<X::Value, Y::Value>> {
+        match self {
+            Left(xs)    => xs.posn().map(|x| Left(x)),
+            Right(ys)   => ys.posn().map(|y| Right(y)),
+            Both(xs,ys) => xs.posn().outer_join(ys.posn()),
+        }
+    }
+
+    fn seek(&mut self, target: &Bound<X::Key>) {
+        match self {
+            Left(xs)  =>   xs.seek(target),
+            Right(ys) =>   ys.seek(target),
+            Both(xs,ys) => { xs.seek(target); ys.seek(target); }
+        }
+    }
+}
+
 
 // // ---------- TRIES?? ----------
 // trait Unsplit { type First; type Rest; fn unsplit(k: Self) -> (Self::First, Self::Rest); }
