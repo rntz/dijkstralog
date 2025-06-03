@@ -183,7 +183,7 @@ impl<'a, K: Ord, V> Seek for SliceSeek<'a, K, V> {
     }
 
     fn seek(&mut self, target: &Bound<&'a K>) {
-        self.index += self.elems[self.index..].partition_point(|x| target.matches(&x.0))
+        self.index += self.elems[self.index..].partition_point(|x| !target.matches(&x.0))
     }
 }
 
