@@ -158,41 +158,6 @@ impl<S: Seek> Iterator for Iter<S> {
 }
 
 
-// pub trait Additive<Rhs> {
-//     type Output;
-//     fn plus(self, other: Rhs) -> Self::Output;
-// }
-
-// // THIS IS IMPOSSIBLE, BECAUSE WE NEED DYNAMIC DISPATCH!
-// // imagine nested addition.
-// // if we get a left iterator but not a right iterator, we want to just return it.
-// // but if we get both left & right we need to outerjoin them.
-// // this means that the type of our iterators (compile time)
-// // will depend on the structure of our data (run time).
-// // oh no!
-// //
-// // I guess the solution is an enum with three branches?
-// // ugh. this feels dumb.
-// // no, it has to have arbitrarily many branches. hmmmm.
-// // this requires memory allocation. blech. I hate it.
-// impl<X: Seek, Y: Seek<Key = X::Key>> Additive<Y> for X
-// where
-//     X::Value: core::ops::Add<Y::Value>,
-// {
-//     //type Output = <X::Value as core::ops::Add>::Output;
-//     type Output = Map<OuterJoin<X,Y>, _>; // how do I even name this type?
-//     // looks like I'll have to create a custom struct just for this, ugh.
-//     fn plus(self, other: Y) -> Self::Output {
-//         self.outer_join(other).map(|_,x| match x {
-//             Outer::Both(x,y) => todo!(),
-//             Outer::Left(x) => todo!(), // IMPOSSIBLE
-//             Outer::Right(y) => todo!(),
-//         })
-//     }
-// }
-
-
-
 // ---------- SEEKING IN SORTED LISTS ----------
 #[derive(Clone)]
 struct Slice<'a, K, V> {
@@ -419,73 +384,3 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for Outer<X,Y> {
         }
     }
 }
-
-
-// // ---------- TRIES?? ----------
-// trait Unsplit { type First; type Rest; fn unsplit(k: Self) -> (Self::First, Self::Rest); }
-
-// impl<X> Unsplit for (X) {
-//     type First = X; type Rest = ();
-//     fn unsplit(x: (X)) -> (X,()) { (x.0, ()) }
-// }
-
-
-// // Addition.
-// pub enum Adder<A,B> { Both(OuterJoin<A,B>), Left(A), Right(B) }
-
-// // CONFLICTING IMPLEMENTATIONS ARGH
-// impl<A,B> Seek for Adder<A,B>
-// where
-//     A: Seek,
-//     B: Seek<Key = A::Key, Value = A::Value>,
-//     A::Value: core::ops::Add<A::Value, Output = A::Value>
-// {
-//     type Key = A::Key;
-//     type Value = A::Value;
-// }
-
-// impl<A,B> Seek for Adder<A,B>
-// where
-//     A: Seek,
-//     B: Seek<Key = A::Key>,
-//     A::Value: Seek,
-//     B::Value: Seek,
-// {
-//     type Key = A::Key;
-//     type Value = Adder<A::Value, B::Value>;
-
-//     fn posn(&self) -> Position<Self::Key, Self::Value> {
-//         match self {
-//             Adder::Left(x) => x.posn().map(|v| Adder::Left(v)),
-//             Adder::Right(y) => y.posn().map(|v| Adder::Right(v)),
-//             Adder::Both(xy) => xy.posn().map(|v| match v {
-//                 Left(a)   => Adder::Left(a),
-//                 Right(b)  => Adder::Right(b),
-//                 Both(a,b) => Adder::Both(OuterJoin(a,b)),
-//             })
-//         }
-//     }
-
-//     fn seek(&mut self, bound: &Bound<Self::Key>) {
-//         match self {
-//             Adder::Left(x)  => x.seek(bound),
-//             Adder::Right(y) => y.seek(bound),
-//             Adder::Both(xy) => xy.seek(bound),
-//         }
-//     }
-// }
-
-
-// fn add<X, Y>(xs: X, ys: Y) -> impl Seek
-// where
-//     X: Seek,
-//     Y: Seek<Key=X::Key, Value=X::Value>,
-//     X::Key: Clone,
-//     X::Value: core::ops::Add<Output = X::Value>,
-// {
-//     OuterJoin(xs, ys).map(|thing| match thing {
-//         Both(x,y) => x + y,
-//         Left(x) => x,
-//         Right(y) => y,
-//     })
-// }
