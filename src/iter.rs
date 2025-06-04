@@ -136,6 +136,9 @@ pub trait Seek {
     fn keys(mut self) -> impl Iterator<Item = Self::Key> where Self: Sized
     { self.iter().map(|(k,v)| k) }
 
+    // fn values(mut self) -> impl Iterator<Item = Self::Value> where Self: Sized
+    // { self.iter().map(|(k,v)| v) }
+
     // fn map_collect<X, F>(mut self, mut func: F) -> Vec<X>
     // where Self: Sized, F: FnMut(Self::Key, Self::Value) -> X
     // { self.iter().map(|(k,v)| func(k,v)).collect() }
@@ -152,6 +155,16 @@ pub trait Seek {
             }
         }
     }
+
+    // fn filter_map<V, F>(self, f: F) -> impl Seek<Key = Self::Key, Value = V>
+    // where Self: Sized, F: Fn(Self::Value) -> Option<V> {
+    //     todo!();
+    // }
+
+    // fn fuse_lookup(self, key: <Self::Value as Seek>::Key) -> impl Seek<Key = Self::Key, Value = <Self::Value as Seek>::Value>
+    // where Self: Sized, Self::Value: Seek {
+    //     self.filter_map(|v| v.lookup(key))
+    // }
 
     fn iter(self) -> Iter<Self> where Self: Sized { Iter(self) }
 
@@ -175,6 +188,24 @@ pub struct Iter<S: Seek>(pub S);
 impl<S: Seek> Iterator for Iter<S> {
     type Item = (S::Key, S::Value);
     fn next(&mut self) -> Option<Self::Item> { self.0.next() }
+}
+
+
+// ---------- SEEKING IN AN OPTION ----------
+impl<S: Seek> Seek for Option<S> {
+    type Key = S::Key;
+    type Value = S::Value;
+
+    fn posn(&self) -> Position<S::Key, S::Value> {
+        match self {
+            None => Know(Done),
+            Some(s) => s.posn(),
+        }
+    }
+
+    fn seek(&mut self, bound: Bound<S::Key>) {
+        if let Some(s) = self { s.seek(bound) }
+    }
 }
 
 
@@ -255,9 +286,13 @@ impl<'a, X, F> std::fmt::Debug for SliceRange<'a, X, F> {
     }
 }
 
-impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> SliceRange<'a, X, F> {
+impl<'a, X, K: Ord, F: Fn(&X) -> K> SliceRange<'a, X, F> {
     pub fn new(elems: &'a [X], get_key: F) -> SliceRange<'a, X, F> {
         let mut s = SliceRange { elems, index_lo: 0, index_hi: 0, get_key };
+        // NB. This initial seek_hi() might be wasted work if the first
+        // operation is a seek() to some higher key. I could avoid it by making
+        // posn() first check whether index_lo == index_hi. Is that worth it?
+        // Dunno.
         s.seek_hi();
         s
     }
@@ -277,13 +312,15 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for SliceRange<'a, X, F> {
 
     fn posn(&self) -> Position<K, &'a [X]> {
         if self.index_lo >= self.elems.len() { return Know(Done) }
+        debug_assert!(self.index_lo < self.index_hi);
         let key = (self.get_key)(&self.elems[self.index_lo]);
         let xs = &self.elems[self.index_lo .. self.index_hi];
         return Have(key, xs);
     }
 
     fn seek(&mut self, target: Bound<K>) {
-        self.index_lo = self.index_hi + self.elems[self.index_hi..].partition_point(
+        // It should be possible to optimize this.
+        self.index_lo = self.index_lo + self.elems[self.index_lo..].partition_point(
             |x| !target.matches((self.get_key)(x))
         );
         self.seek_hi()
@@ -328,6 +365,9 @@ impl<V, S: Seek, F: Fn(S::Value) -> V> Seek for Map<S, F> {
 
 
 // ---------- INNER JOIN ----------
+//
+// TODO: n-ary joins using a macro to generate the code. Look at Datafrog for inspo:
+// https://github.com/rust-lang/datafrog/blob/07bf407c740db506a56bcb4af3eb474eb83ca815/src/treefrog.rs#L59
 pub struct Join<X,Y>(pub X, pub Y);
 
 impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
