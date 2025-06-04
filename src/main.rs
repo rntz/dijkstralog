@@ -5,9 +5,9 @@ mod lftj;
 mod example;
 
 // new code
-mod iters;
+mod iter;
 
-use iters::{
+use iter::{
     Position,
     Position::{*},
     Bound,
