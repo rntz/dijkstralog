@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 // use core::ops::{Add,Mul};
+use std::fmt;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Bound<K> { Init, Atleast(K), Greater(K), Done }
@@ -154,10 +155,31 @@ pub trait Seek {
     }
 }
 
-pub trait Additive<Rhs> {
-    type Output;
-    fn plus(self, other: Rhs) -> Self::Output;
+
+// Rust-native iteration over seekable iterators
+pub struct Iter<S: Seek>(S);
+
+impl<S: Seek> Iterator for Iter<S> {
+    type Item = (S::Key, S::Value);
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.0.posn() {
+                Have(k,v) => {
+                    self.0.seek(&Greater(k.clone()));
+                    return Some((k, v));
+                }
+                Know(Done) => { return None; }
+                Know(p) => self.0.seek(&p),
+            }
+        }
+    }
 }
+
+
+// pub trait Additive<Rhs> {
+//     type Output;
+//     fn plus(self, other: Rhs) -> Self::Output;
+// }
 
 // // THIS IS IMPOSSIBLE, BECAUSE WE NEED DYNAMIC DISPATCH!
 // // imagine nested addition.
@@ -212,7 +234,42 @@ impl<'a, K: Ord, V> Seek for Slice<'a, K, V> {
 }
 
 
+// ---------- SEEKING BY A FUNCTION IN A SORTED LIST ----------
+// Assumes the underlying slice is sorted by get_key() with NO DUPLICATES.
+#[derive(Clone)]
+pub struct SliceBy<'a, X, F> {
+    elems: &'a [X],
+    index: usize,
+    get_key: F,
+}
+
+impl<'a, K: Ord + Clone, X, F: Fn(&X) -> K> SliceBy<'a, X, F> {
+    pub fn new(elems: &'a [X], get_key: F) -> SliceBy<'a ,X, F> {
+        SliceBy { elems, index: 0, get_key }
+    }
+}
+
+impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> Seek for SliceBy<'a, X, F> {
+    type Key = K;
+    type Value = &'a X;
+
+    fn posn(&self) -> Position<K, &'a X> {
+        if self.index >= self.elems.len() { return Know(Done) }
+        let x = &self.elems[self.index];
+        return Have((self.get_key)(x), x);
+    }
+
+    fn seek(&mut self, target: &Bound<K>) {
+        self.index += self.elems[self.index..].partition_point(
+            |x| !target.matches((self.get_key)(x))
+        )
+    }
+}
+
+
 // ---------- SEEKING RANGES IN SORTED LISTS ----------
+// Assumes the underlying slice is sorted by get_key(). Duplicates are allowed;
+// produces non-empty sub-slices whose elements all have the same key.
 #[derive(Clone)]
 pub struct SliceRange<'a, X, F> {
     elems: &'a [X],
@@ -220,8 +277,6 @@ pub struct SliceRange<'a, X, F> {
     index_hi: usize,
     get_key: F,
 }
-
-use std::fmt;
 
 impl<'a, X, F> fmt::Debug for SliceRange<'a, X, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
@@ -311,7 +366,7 @@ impl<B, Iter, F> Seek for Map<Iter,F> where
 
 
 // ---------- INNER JOIN ----------
-pub struct Join<X,Y>(X,Y);
+pub struct Join<X,Y>(pub X, pub Y);
 
 impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
     type Key   = X::Key;
@@ -327,9 +382,24 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
     }
 }
 
+impl<X: Seek, Y: Seek<Key=X::Key>> Seek for (X,Y) {
+    type Key   = X::Key;
+    type Value = (X::Value, Y::Value);
+
+    fn posn(&self) -> Position<X::Key, (X::Value, Y::Value)> {
+        self.0.posn().inner_join(self.1.posn())
+    }
+
+    fn seek(&mut self, target: &Bound<X::Key>) {
+        self.0.seek(target);
+        self.1.seek(&self.0.bound());
+    }
+}
+
+
 
 // ---------- OUTER JOIN ----------
-pub struct OuterJoin<X,Y>(X,Y);
+pub struct OuterJoin<X,Y>(pub X, pub Y);
 
 pub enum Outer<A, B> { Both(A,B), Left(A), Right(B), }
 use Outer::*;

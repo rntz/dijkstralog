@@ -13,6 +13,7 @@ use iters::{
     Bound,
     Bound::{*},
     SliceRange,
+    SliceBy,
     Seek,
 };
 
@@ -98,33 +99,31 @@ fn example2() {
     println!("vs: {vs:?}");
 }
 
-// EXAMPLE 3: TRIANGLE QUERY WITH LESS CEREMONY
+// EXAMPLE 3: SEMIRING TRIANGLE QUERY WITH LESS CEREMONY
+#[allow(non_snake_case)]
 fn example3() {
-    let r: &[(&str, isize)] = &[("a", 1), ("a", 2), ("b", 1), ("b", 2)];
-    let s: &[(isize, &str)] = &[(1, "one"), (1, "wun"), (2, "deux"), (2, "two")];
-    let t: &[(&str, &str)]  = &[("a", "one"), ("b", "deux"), ("mary", "mary")];
-    assert!(r.is_sorted());
-    assert!(s.is_sorted());
-    assert!(t.is_sorted());
+    let rAB: &[(&str,  usize, i8)] = &[("a", 1, 1), ("a", 2, 2), ("b", 1, 1), ("b", 2, 2)];
+    let sBC: &[(usize, &str,  i8)] = &[(1, "one", 1), (1, "wun", 1), (2, "deux", 2), (2, "two", 2)];
+    let tAC: &[(&str,  &str,  i8)]  = &[("a", "one", 1), ("b", "deux", 2), ("mary", "mary", 3)];
+    assert!(rAB.is_sorted());
+    assert!(sBC.is_sorted());
+    assert!(tAC.is_sorted());
 
     // Let's plan a triangle query!
     let triangle_it =
-        SliceRange::new(r, |x| x.0)
-        .join(SliceRange::new(t, |x| x.0))
-        .map(|(r_a, t_a)| {
-            SliceRange::new(r_a, |x| x.1)
-                .join(SliceRange::new(s, |x| x.0))
-                .map(|(r_ab, s_b)| {
-                    SliceRange::new(s_b, |x| x.1)
-                        .join(SliceRange::new(t_a, |x| x.1))
-                        .map(|_| ())
-                })
+        (SliceRange::new(rAB, |x| x.0), SliceRange::new(tAC, |x| x.0))
+        .map(|(rB, tC)| {
+            (SliceBy::new(rB, |x| x.1), SliceRange::new(sBC, |x| x.0))
+            .map(|(r, sC)| {
+                (SliceBy::new(sC, |x| x.1), SliceBy::new(tC, |x| x.1))
+                .map(move |(s, t)| r.2 * s.2 * t.2)
+            })
         });
 
     let vs = triangle_it
         .collect_with(|a, tuples| {
             (*a, tuples.collect_with(|b, tuples| {
-                (*b, tuples.collect_with(|c, ()| *c))
+                (*b, tuples.collect_with(|c, tuple| (*c, tuple)))
             }))
         });
     println!("vs: {vs:?}");
