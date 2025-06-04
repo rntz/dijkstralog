@@ -276,6 +276,12 @@ pub struct SliceRange<'a, X, F> {
     get_key: F,
 }
 
+// // TODO use or delete this
+// pub fn from_ranges<X, K, F>(elems: &[X], get_key: F) -> SliceRange<X, F>
+// where K: Ord, F: Fn(&X) -> K {
+//     return SliceRange::new(elems, get_key)
+// }
+
 impl<'a, X, F> std::fmt::Debug for SliceRange<'a, X, F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_struct("SliceRange")
