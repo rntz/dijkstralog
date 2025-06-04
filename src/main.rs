@@ -78,7 +78,7 @@ fn example2() {
         });
 
     let triangles = triangle_it
-        .map(|_, bcs| bcs.map(|_, cs| cs.collect()).collect())
+        .map_value(|bcs| bcs.map_value(|cs| cs.collect()).collect())
         .collect();
     println!("triangles: {triangles:?}");
 }
