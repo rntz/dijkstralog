@@ -63,8 +63,8 @@ impl<K: Ord + Copy, V> Position<K, V> {
 
     pub fn outer_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, Outer<V, U>> {
         match self.bound().cmp(&other.bound()) {
-            Ordering::Less    => self.map(|_, v| Left(v)),
-            Ordering::Greater => other.map(|_, v| Right(v)),
+            Ordering::Less    => self.map_value(|v| Left(v)),
+            Ordering::Greater => other.map_value(|v| Right(v)),
             Ordering::Equal   => match (self, other) {
                 (Have(k, x), Have(_, y))    => Have(k, Both(x,y)),
                 (Know(p), _) | (_, Know(p)) => Know(p),
@@ -132,6 +132,7 @@ pub trait Seek {
     where Self: Sized, U: Seek<Key=Self::Key>
     { OuterJoin(self, other) }
 
+    // TODO: can I remove this?
     fn collect_with<X, F>(mut self, mut func: F) -> Vec<X>
     where Self: Sized, F: FnMut(Self::Key, Self::Value) -> X
     { self.iter().map(|(k,v)| func(k,v)).collect() }
@@ -412,8 +413,8 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for Outer<X,Y> {
 
     fn posn(&self) -> Position<X::Key, Outer<X::Value, Y::Value>> {
         match self {
-            Left(xs)    => xs.posn().map(|_, x| Left(x)),
-            Right(ys)   => ys.posn().map(|_, y| Right(y)),
+            Left(xs)    => xs.posn().map_value(|x| Left(x)),
+            Right(ys)   => ys.posn().map_value(|y| Right(y)),
             Both(xs,ys) => xs.posn().outer_join(ys.posn()),
         }
     }

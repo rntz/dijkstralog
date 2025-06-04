@@ -38,7 +38,7 @@ fn example1() {
     // Dump it into a trie using nested iteration.
     let trie: Vec<(isize, Vec<&str>)> =
         SliceRange::new(xs, |tuple| tuple.0)
-        .map(|_, tuples|
+        .map_value(|tuples|
              SliceBy::new(tuples, |tuple| tuple.1)
              .collect_with(|y, _tuple| y))
         .collect();
@@ -55,11 +55,11 @@ fn example2() {
     assert!(t.is_sorted());
 
     let mut r_ab =
-        SliceRange::new(r, |t| t.0).map(|_, bs| SliceRange::new(bs, |t| t.1).map(|_, _| 2));
+        SliceRange::new(r, |t| t.0).map_value(|bs| SliceRange::new(bs, |t| t.1).map_value(|_| 2));
     let mut s_bc =
-        SliceRange::new(s, |t| t.0).map(|_, cs| SliceRange::new(cs, |t| t.1).map(|_, _| 3));
+        SliceRange::new(s, |t| t.0).map_value(|cs| SliceRange::new(cs, |t| t.1).map_value(|_| 3));
     let mut t_ac =
-        SliceRange::new(t, |t| t.0).map(|_, cs| SliceRange::new(cs, |t| t.1).map(|_, _| 5));
+        SliceRange::new(t, |t| t.0).map_value(|cs| SliceRange::new(cs, |t| t.1).map_value(|_| 5));
 
     let rtrie = r_ab.clone().collect_with(|a, bs| {
         (a, bs.collect_with(|b, v| (b, v)))
