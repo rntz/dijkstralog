@@ -65,8 +65,8 @@ impl<K: Ord + Copy, V> Position<K, V> {
 
     pub fn outer_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, Outer<V, U>> {
         match self.bound().cmp(&other.bound()) {
-            Ordering::Less    => self.map_value(|v| Left(v)),
-            Ordering::Greater => other.map_value(|v| Right(v)),
+            Ordering::Less    => self.map(|v| Left(v)),
+            Ordering::Greater => other.map(|v| Right(v)),
             Ordering::Equal   => match (self, other) {
                 (Have(k, x), Have(_, y))    => Have(k, Both(x,y)),
                 (Know(p), _) | (_, Know(p)) => Know(p),
@@ -77,7 +77,7 @@ impl<K: Ord + Copy, V> Position<K, V> {
 
 impl<K, V> Position<K, V> {
     #[inline]
-    pub fn map_value<U, F: FnOnce(V) -> U>(self, f: F) -> Position<K, U> {
+    pub fn map<U, F: FnOnce(V) -> U>(self, f: F) -> Position<K, U> {
         match self {
             Know(p) => Know(p),
             Have(k, v) => Have(k, f(v)),
@@ -109,7 +109,7 @@ pub trait Seek {
 
     fn bound(&self) -> Bound<Self::Key> { return self.posn().to_bound() }
 
-    fn map_value<V, F>(self, func: F) -> MapValue<Self, F>
+    fn map<V, F>(self, func: F) -> MapValue<Self, F>
     where Self: Sized, F: Fn(Self::Value) -> V
     { MapValue { iter: self, func } }
 
@@ -318,7 +318,7 @@ impl<V, Iter, F> Seek for MapValue<Iter, F> where
     type Value = V;
 
     fn posn(&self) -> Position<Iter::Key, V> {
-        self.iter.posn().map_value(&self.func)
+        self.iter.posn().map(&self.func)
     }
 
     fn seek(&mut self, target: Bound<Iter::Key>) {
@@ -405,8 +405,8 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for Outer<X,Y> {
 
     fn posn(&self) -> Position<X::Key, Outer<X::Value, Y::Value>> {
         match self {
-            Left(xs)    => xs.posn().map_value(|x| Left(x)),
-            Right(ys)   => ys.posn().map_value(|y| Right(y)),
+            Left(xs)    => xs.posn().map(|x| Left(x)),
+            Right(ys)   => ys.posn().map(|y| Right(y)),
             Both(xs,ys) => xs.posn().outer_join(ys.posn()),
         }
     }

@@ -38,7 +38,7 @@ fn example1() {
     // Dump it into a trie using nested iteration.
     let trie: Vec<(isize, Vec<&str>)> =
         SliceRange::new(xs, |tuple| tuple.0)
-        .map_value(|tuples|
+        .map(|tuples|
              SliceBy::new(tuples, |tuple| tuple.1)
              .collect_with(|y, _tuple| y))
         .collect();
@@ -55,11 +55,11 @@ fn example2() {
     assert!(t.is_sorted());
 
     let mut r_ab =
-        SliceRange::new(r, |t| t.0).map_value(|bs| SliceRange::new(bs, |t| t.1).map_value(|_| 2));
+        SliceRange::new(r, |t| t.0).map(|bs| SliceRange::new(bs, |t| t.1).map(|_| 2));
     let mut s_bc =
-        SliceRange::new(s, |t| t.0).map_value(|cs| SliceRange::new(cs, |t| t.1).map_value(|_| 3));
+        SliceRange::new(s, |t| t.0).map(|cs| SliceRange::new(cs, |t| t.1).map(|_| 3));
     let mut t_ac =
-        SliceRange::new(t, |t| t.0).map_value(|cs| SliceRange::new(cs, |t| t.1).map_value(|_| 5));
+        SliceRange::new(t, |t| t.0).map(|cs| SliceRange::new(cs, |t| t.1).map(|_| 5));
 
     let rtrie = r_ab.clone().collect_with(|a, bs| {
         (a, bs.collect_with(|b, v| (b, v)))
@@ -71,14 +71,14 @@ fn example2() {
     // I worry about what the closures look like...
     // I should try disassembly, but it might be too big to understand.
     let triangle_it =
-        r_ab.join(t_ac).map_value(move |(r_b, t_c)| {
-            r_b.join(s_bc.clone()).map_value(move |(r, s_c)| {
-                s_c.join(t_c.clone()).map_value(move |(s, t)| r * s * t)
+        r_ab.join(t_ac).map(move |(r_b, t_c)| {
+            r_b.join(s_bc.clone()).map(move |(r, s_c)| {
+                s_c.join(t_c.clone()).map(move |(s, t)| r * s * t)
             })
         });
 
     let triangles = triangle_it
-        .map_value(|bcs| bcs.map_value(|cs| cs.collect()).collect())
+        .map(|bcs| bcs.map(|cs| cs.collect()).collect())
         .collect();
     println!("triangles: {triangles:?}");
 }
@@ -96,11 +96,11 @@ fn example3() {
     // Let's plan a triangle query!
     let triangle_it =
         (SliceRange::new(rAB, |x| x.0), SliceRange::new(tAC, |x| x.0))
-        .map_value(|(rB, tC)| {
+        .map(|(rB, tC)| {
             (SliceBy::new(rB, |x| x.1), SliceRange::new(sBC, |x| x.0))
-            .map_value(|(r, sC)| {
+            .map(|(r, sC)| {
                 (SliceBy::new(sC, |x| x.1), SliceBy::new(tC, |x| x.1))
-                .map_value(|(s, t)| r.2 * s.2 * t.2)
+                .map(|(s, t)| r.2 * s.2 * t.2)
             })
         });
 
