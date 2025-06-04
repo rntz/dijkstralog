@@ -25,9 +25,9 @@ fn example1() {
     let mut it = SliceRange::new(xs, |x| x.0);
     loop {
         let p = it.posn();
+        println!("{p:?}");
+        println!("{it:?}");
         println!();
-        println!(" p: {p:?}");
-        println!("it: {it:?}");
         match p {
             Know(Done) => break,
             Know(p) => it.seek(p),
@@ -35,19 +35,13 @@ fn example1() {
         }
     }
 
-    // Dump it into a trie using nested SliceRange iteration.
-    println!();
-    let trie =
+    // Dump it into a trie using nested iteration.
+    let trie: Vec<(isize, Vec<&str>)> =
         SliceRange::new(xs, |tuple| tuple.0)
-        .collect_with(|x, tuples| {
-            let vec =
-                SliceRange::new(tuples, |tuple| tuple.1)
-                .collect_with(|y, tuples| {
-                    assert!(tuples.len() == 1);
-                    y
-                });
-            (x, vec)
-        });
+        .map(|_, tuples|
+             SliceBy::new(tuples, |tuple| tuple.1)
+             .collect_with(|y, _tuple| y))
+        .collect();
     println!("trie: {trie:?}");
 }
 
@@ -60,17 +54,15 @@ fn example2() {
     assert!(s.is_sorted());
     assert!(t.is_sorted());
 
-    let mut r_ =
-        SliceRange::new(r, |x| x.0)
-        .map(|tuples| SliceRange::new(tuples, |x| x.1).map(|slice| 2));
-    let mut s_ =
-        SliceRange::new(s, |x| x.0)
-        .map(|tuples| SliceRange::new(tuples, |x| x.1).map(|slice| 3));
-    let mut t_ = SliceRange::new(t, |x| x.0)
-        .map(|tuples| SliceRange::new(tuples, |x| x.1).map(|slice| 5));
+    let mut r_ab =
+        SliceRange::new(r, |t| t.0).map(|_, bs| SliceRange::new(bs, |t| t.1).map(|_, _| 2));
+    let mut s_bc =
+        SliceRange::new(s, |t| t.0).map(|_, cs| SliceRange::new(cs, |t| t.1).map(|_, _| 3));
+    let mut t_ac =
+        SliceRange::new(t, |t| t.0).map(|_, cs| SliceRange::new(cs, |t| t.1).map(|_, _| 5));
 
-    let rtrie = r_.clone().collect_with(|a, bit| {
-        (a, bit.collect_with(|b, v| (b, v)))
+    let rtrie = r_ab.clone().collect_with(|a, bs| {
+        (a, bs.collect_with(|b, v| (b, v)))
     });
     println!("rtrie: {rtrie:?}");
 
@@ -79,27 +71,19 @@ fn example2() {
     // I worry about what the closures look like...
     // I should try disassembly, but it might be too big to understand.
     let triangle_it =
-        r_.join(t_)
-        .map(move |(r_a, t_a)| {
-            r_a.join(s_.clone())
-                .map(move |(r_ab, s_b)| {
-                    s_b.join(t_a.clone())
-                        .map(move |(s_bc, t_ac)| {
-                            r_ab * s_bc * t_ac
-                        })
-                })
+        r_ab.join(t_ac).map_value(move |(r_b, t_c)| {
+            r_b.join(s_bc.clone()).map_value(move |(r, s_c)| {
+                s_c.join(t_c.clone()).map_value(move |(s, t)| r * s * t)
+            })
         });
 
-    let vs = triangle_it
-        .collect_with(|a, tuples| {
-            (a, tuples.collect_with(|b, tuples| {
-                (b, tuples.collect_with(|c, value| (c, value)))
-            }))
-        });
-    println!("vs: {vs:?}");
+    let triangles = triangle_it
+        .map(|_, bcs| bcs.map(|_, cs| cs.collect()).collect())
+        .collect();
+    println!("triangles: {triangles:?}");
 }
 
-// EXAMPLE 3: SEMIRING TRIANGLE QUERY WITH LESS CEREMONY
+// EXAMPLE 3: SEMIRING TRIANGLE QUERY WITH LESS move/clone
 #[allow(non_snake_case)]
 fn example3() {
     let rAB: &[(&str,  usize, i8)] = &[("a", 1, 1), ("a", 2, 2), ("b", 1, 1), ("b", 2, 2)];
@@ -112,17 +96,17 @@ fn example3() {
     // Let's plan a triangle query!
     let triangle_it =
         (SliceRange::new(rAB, |x| x.0), SliceRange::new(tAC, |x| x.0))
-        .map(|(rB, tC)| {
+        .map_value(|(rB, tC)| {
             (SliceBy::new(rB, |x| x.1), SliceRange::new(sBC, |x| x.0))
-            .map(|(r, sC)| {
+            .map_value(|(r, sC)| {
                 (SliceBy::new(sC, |x| x.1), SliceBy::new(tC, |x| x.1))
-                .map(|(s, t)| r.2 * s.2 * t.2)
+                .map_value(|(s, t)| r.2 * s.2 * t.2)
             })
         });
 
     // Flatten it back to a sorted vector.
     let mut vs: Vec<(&str, usize, &str, i8)> = Vec::new();
-    for (a, bcs) in triangle_it.clone().iter() {
+    for (a, bcs) in triangle_it.iter() {
         for (b, cs) in bcs.iter() {
             for (c, anno) in cs.iter() {
                 vs.push((a, b, c, anno))
@@ -133,7 +117,7 @@ fn example3() {
     assert!(vs.is_sorted());
 }
 
-// EXAMPLE 4
+// EXAMPLE 4: NATIVE ITERATION
 #[allow(non_snake_case)]
 fn example4() {
     let rAB: &[(&str,  usize, i8)] = &[("a", 1, 1), ("a", 2, 2), ("b", 1, 1), ("b", 2, 2)];
@@ -145,11 +129,11 @@ fn example4() {
 
     // Triangle query into a sorted vector.
     let mut vs: Vec<(&str, usize, &str, i8)> = Vec::new();
-    let rt = (SliceRange::new(rAB, |x| x.0), SliceRange::new(tAC, |x| x.0));
+    let rt = SliceRange::new(rAB, |x| x.0).join(SliceRange::new(tAC, |x| x.0));
     for (a, (rB, tC)) in rt.iter() {
-        let rs = (SliceBy::new(rB, |x| x.1), SliceRange::new(sBC, |x| x.0));
+        let rs = SliceBy::new(rB, |x| x.1).join(SliceRange::new(sBC, |x| x.0));
         for (b, (r, sC)) in rs.iter() {
-            let st = (SliceBy::new(sC, |x| x.1), SliceBy::new(tC, |x| x.1));
+            let st = SliceBy::new(sC, |x| x.1).join(SliceBy::new(tC, |x| x.1));
             for (c, (s, t)) in st.iter() {
                 vs.push((a, b, c, r.2 * s.2 * t.2))
             }
@@ -160,12 +144,15 @@ fn example4() {
 }
 
 fn main() {
-    println!("hello world!");
+    println!("\n----- EXAMPLE 1 -----");
     example1();
-    println!();
+
+    println!("\n----- EXAMPLE 2 -----");
     example2();
-    println!();
+
+    println!("\n----- EXAMPLE 3 -----");
     example3();
-    println!();
+
+    println!("\n----- EXAMPLE 4 -----");
     example4();
 }

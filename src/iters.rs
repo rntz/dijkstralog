@@ -44,11 +44,27 @@ impl<K: Ord, V> Position<K, V> {
     }
 }
 
-impl<K: Ord + Clone, V> Position<K, V> {
+impl<K: Ord, V> Position<K,V> {
+    pub fn to_bound(self) -> Bound<K> {
+        match self {
+            Have(k, _) => Atleast(k),
+            Know(p)    => p,
+        }
+    }
+}
+
+impl<K: Ord + Copy, V> Position<K, V> {
+    pub fn bound(&self) -> Bound<K> {
+        match *self {
+            Have(k, _) => Atleast(k),
+            Know(p)    => p,
+        }
+    }
+
     pub fn outer_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, Outer<V, U>> {
         match self.bound().cmp(&other.bound()) {
-            Ordering::Less    => self.map(|v| Left(v)),
-            Ordering::Greater => other.map(|v| Right(v)),
+            Ordering::Less    => self.map(|_, v| Left(v)),
+            Ordering::Greater => other.map(|_, v| Right(v)),
             Ordering::Equal   => match (self, other) {
                 (Have(k, x), Have(_, y))    => Have(k, Both(x,y)),
                 (Know(p), _) | (_, Know(p)) => Know(p),
@@ -57,47 +73,33 @@ impl<K: Ord + Clone, V> Position<K, V> {
     }
 }
 
-impl<K: Clone, V> Position<K, V> {
-    pub fn bound(&self) -> Bound<K> {
-        match self {
-            Have(k, _) => Atleast(k.clone()),
-            Know(p)    => p.clone(),
-        }
-    }
-}
-
 impl<K, V> Position<K, V> {
-    pub fn to_bound(self) -> Bound<K> {
-        match self {
-            Have(k, _) => Atleast(k),
-            Know(p)    => p,
-        }
-    }
-
-    pub fn map<U, F>(self, f: F) -> Position<K, U>
-    where F: FnOnce(V) -> U {
+    #[inline]
+    pub fn map_value<U, F: FnOnce(V) -> U>(self, f: F) -> Position<K, U> {
         match self {
             Know(p) => Know(p),
             Have(k, v) => Have(k, f(v)),
         }
     }
 
-    // fn map_with_key<U, F>(self, f: F) -> Position<K, U>
-    // where F: FnOnce(&K,V) -> U {
+    // pub fn filter_map<U, F>(self, f: F) -> Position<K, U>
+    // where F : FnOnce(&K, V) -> Option<U> {
     //     match self {
     //         Know(p) => Know(p),
-    //         Have(k, v) => { let u = f(&k,v); Have(k, u) }
+    //         Have(k, v) => match f(&k, v) {
+    //             Some(u) => Have(k, u),
+    //             None    => Know(Greater(k)),
+    //         }
     //     }
     // }
+}
 
-    pub fn filter_map<U, F>(self, f: F) -> Position<K, U>
-    where F : FnOnce(&K, V) -> Option<U> {
+impl<K: Copy, V> Position<K, V> {
+    #[inline]
+    fn map<U, F: FnOnce(K, V) -> U>(self, f: F) -> Position<K, U> {
         match self {
             Know(p) => Know(p),
-            Have(k, v) => match f(&k, v) {
-                Some(u) => Have(k, u),
-                None    => Know(Greater(k)),
-            }
+            Have(k, v) => { Have(k, f(k,v)) }
         }
     }
 }
@@ -114,13 +116,13 @@ pub trait Seek {
 
     fn bound(&self) -> Bound<Self::Key> { return self.posn().to_bound() }
 
-    fn map<B,F>(self, func: F) -> Map<Self,F>
-    where Self: Sized, F: Fn(Self::Value) -> B
-    { Map { iter: self, func } }
+    fn map_value<V, F>(self, func: F) -> MapValue<Self, F>
+    where Self: Sized, F: Fn(Self::Value) -> V
+    { MapValue { iter: self, func } }
 
-    // fn map_with_key<B,F>(self, func: F) -> Map<Self,F>
-    // where Self: Sized, F: Fn(Self::Key, Self::Value) -> B
-    // { MapWithKey { iter: self, func } }
+    fn map<V, F>(self, func: F) -> Map<Self, F>
+    where Self: Sized, F: Fn(Self::Key, Self::Value) -> V
+    { Map { iter: self, func } }
 
     fn join<U>(self, other: U) -> Join<Self,U>
     where Self: Sized, U: Seek<Key=Self::Key>
@@ -131,48 +133,35 @@ pub trait Seek {
     { OuterJoin(self, other) }
 
     fn collect_with<X, F>(mut self, mut func: F) -> Vec<X>
-    where Self: Sized,
-          F: FnMut(Self::Key, Self::Value) -> X
-    {
-        let mut xs = Vec::new();
+    where Self: Sized, F: FnMut(Self::Key, Self::Value) -> X
+    { self.iter().map(|(k,v)| func(k,v)).collect() }
+
+    fn collect(mut self) -> Vec<(Self::Key, Self::Value)> where Self: Sized
+    { self.iter().collect() }
+
+    fn iter(self) -> Iter<Self> where Self: Sized { Iter(self) }
+
+    // Like Iterator::next.
+    fn next(&mut self) -> Option<(Self::Key, Self::Value)> {
         loop {
             match self.posn() {
                 Have(k,v) => {
-                    xs.push(func(k,v));
                     self.seek(Greater(k));
+                    return Some((k, v));
                 }
-                Know(Done) => break,
+                Know(Done) => { return None; }
                 Know(p) => self.seek(p),
             }
         }
-        return xs;
     }
-
-    fn collect(mut self) -> Vec<(Self::Key, Self::Value)> where Self: Sized {
-        self.collect_with(|k,v| (k, v))
-    }
-
-    fn iter(self) -> Iter<Self> where Self: Sized { Iter(self) }
 }
 
 
 // Rust-native iteration over seekable iterators
 pub struct Iter<S: Seek>(pub S);
-
 impl<S: Seek> Iterator for Iter<S> {
     type Item = (S::Key, S::Value);
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.0.posn() {
-                Have(k,v) => {
-                    self.0.seek(Greater(k));
-                    return Some((k, v));
-                }
-                Know(Done) => { return None; }
-                Know(p) => self.0.seek(p),
-            }
-        }
-    }
+    fn next(&mut self) -> Option<Self::Item> { self.0.next() }
 }
 
 
@@ -324,19 +313,19 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for SliceRange<'a, X, F> {
 }
 
 
-// ---------- MAP ----------
+// ---------- MAP ON VALUES ----------
 #[derive(Clone)]
-pub struct Map<Iter, F> { iter: Iter, func: F }
+pub struct MapValue<Iter, F> { iter: Iter, func: F }
 
-impl<B, Iter, F> Seek for Map<Iter,F> where
+impl<V, Iter, F> Seek for MapValue<Iter, F> where
     Iter: Seek,
-    F: Fn(Iter::Value) -> B
+    F: Fn(Iter::Value) -> V
 {
     type Key = Iter::Key;
-    type Value = B;
+    type Value = V;
 
-    fn posn(&self) -> Position<Iter::Key, B> {
-        self.iter.posn().map(&self.func)
+    fn posn(&self) -> Position<Iter::Key, V> {
+        self.iter.posn().map_value(&self.func)
     }
 
     fn seek(&mut self, target: Bound<Iter::Key>) {
@@ -345,24 +334,22 @@ impl<B, Iter, F> Seek for Map<Iter,F> where
 }
 
 
-// // ---------- MAP WITH KEY ----------
-// pub struct MapWithKey<Iter, F> { iter: Iter, func: F }
+// ---------- MAP WITH KEY ----------
+#[derive(Clone)]
+pub struct Map<S, F> { iter: S, func: F }
 
-// impl<B, Iter, F> Seek for MapWithKey<Iter,F> where
-//     Iter: Seek,
-//     F: Fn(&Iter::Key, Iter::Value) -> B
-// {
-//     type Key = Iter::Key;
-//     type Value = B;
+impl<V, S: Seek, F: Fn(S::Key, S::Value) -> V> Seek for Map<S, F> {
+    type Key = S::Key;
+    type Value = V;
 
-//     fn posn(&self) -> Position<Iter::Key, B> {
-//         self.iter.posn().map_with_key(&self.func)
-//     }
+    fn posn(&self) -> Position<S::Key, V> {
+        self.iter.posn().map(&self.func)
+    }
 
-//     fn seek(&mut self, target: &Bound<Iter::Key>) {
-//         self.iter.seek(target)
-//     }
-// }
+    fn seek(&mut self, target: Bound<S::Key>) {
+        self.iter.seek(target)
+    }
+}
 
 
 // ---------- INNER JOIN ----------
@@ -425,8 +412,8 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for Outer<X,Y> {
 
     fn posn(&self) -> Position<X::Key, Outer<X::Value, Y::Value>> {
         match self {
-            Left(xs)    => xs.posn().map(|x| Left(x)),
-            Right(ys)   => ys.posn().map(|y| Right(y)),
+            Left(xs)    => xs.posn().map(|_, x| Left(x)),
+            Right(ys)   => ys.posn().map(|_, y| Right(y)),
             Both(xs,ys) => xs.posn().outer_join(ys.posn()),
         }
     }
