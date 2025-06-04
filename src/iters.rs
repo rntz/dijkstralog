@@ -103,16 +103,14 @@ impl<K, V> Position<K, V> {
 }
 
 pub trait Seek {
-    // I strongly suggest Key: Copy.
-    // If you want to use a non-Copy type K, consider type Key = &K.
-    //
-    // Certain operations (eg OuterJoin) require at least Key: Clone, so we
-    // require it here to avoid repeating it all the time.
-    type Key: Ord + Clone;
+    // Many operations need to copy/clone keys. We could technically get by with
+    // only Key: Clone, but for performance it's best if Key: Copy, so we
+    // enforce that here.
+    type Key: Ord + Copy;
     type Value;
 
     fn posn(&self) -> Position<Self::Key, Self::Value>;
-    fn seek(&mut self, target: &Bound<Self::Key>);
+    fn seek(&mut self, target: Bound<Self::Key>);
 
     fn bound(&self) -> Bound<Self::Key> { return self.posn().to_bound() }
 
@@ -134,24 +132,24 @@ pub trait Seek {
 
     fn collect_with<X, F>(mut self, mut func: F) -> Vec<X>
     where Self: Sized,
-          F: FnMut(&Self::Key, Self::Value) -> X
+          F: FnMut(Self::Key, Self::Value) -> X
     {
         let mut xs = Vec::new();
         loop {
             match self.posn() {
                 Have(k,v) => {
-                    xs.push(func(&k,v));
-                    self.seek(&Greater(k));
+                    xs.push(func(k,v));
+                    self.seek(Greater(k));
                 }
                 Know(Done) => break,
-                Know(p) => self.seek(&p),
+                Know(p) => self.seek(p),
             }
         }
         return xs;
     }
 
     fn collect(mut self) -> Vec<(Self::Key, Self::Value)> where Self: Sized {
-        self.collect_with(|k,v| (k.clone(), v))
+        self.collect_with(|k,v| (k, v))
     }
 }
 
@@ -165,11 +163,11 @@ impl<S: Seek> Iterator for Iter<S> {
         loop {
             match self.0.posn() {
                 Have(k,v) => {
-                    self.0.seek(&Greater(k.clone()));
+                    self.0.seek(Greater(k));
                     return Some((k, v));
                 }
                 Know(Done) => { return None; }
-                Know(p) => self.0.seek(&p),
+                Know(p) => self.0.seek(p),
             }
         }
     }
@@ -228,7 +226,7 @@ impl<'a, K: Ord, V> Seek for Slice<'a, K, V> {
         return Have(k, v);
     }
 
-    fn seek(&mut self, target: &Bound<&'a K>) {
+    fn seek(&mut self, target: Bound<&'a K>) {
         self.index += self.elems[self.index..].partition_point(|x| !target.matches(&x.0))
     }
 }
@@ -249,7 +247,7 @@ impl<'a, K: Ord + Clone, X, F: Fn(&X) -> K> SliceBy<'a, X, F> {
     }
 }
 
-impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> Seek for SliceBy<'a, X, F> {
+impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for SliceBy<'a, X, F> {
     type Key = K;
     type Value = &'a X;
 
@@ -259,7 +257,7 @@ impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> Seek for SliceBy<'a, X, F> {
         return Have((self.get_key)(x), x);
     }
 
-    fn seek(&mut self, target: &Bound<K>) {
+    fn seek(&mut self, target: Bound<K>) {
         self.index += self.elems[self.index..].partition_point(
             |x| !target.matches((self.get_key)(x))
         )
@@ -304,7 +302,7 @@ impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> SliceRange<'a, X, F> {
     }
 }
 
-impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> Seek for SliceRange<'a, X, F> {
+impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for SliceRange<'a, X, F> {
     type Key = K;
     type Value = &'a [X];
 
@@ -315,7 +313,7 @@ impl<'a, X, K: Ord + Clone, F: Fn(&X) -> K> Seek for SliceRange<'a, X, F> {
         return Have(key, xs);
     }
 
-    fn seek(&mut self, target: &Bound<K>) {
+    fn seek(&mut self, target: Bound<K>) {
         self.index_lo = self.index_hi + self.elems[self.index_hi..].partition_point(
             |x| !target.matches((self.get_key)(x))
         );
@@ -339,7 +337,7 @@ impl<B, Iter, F> Seek for Map<Iter,F> where
         self.iter.posn().map(&self.func)
     }
 
-    fn seek(&mut self, target: &Bound<Iter::Key>) {
+    fn seek(&mut self, target: Bound<Iter::Key>) {
         self.iter.seek(target)
     }
 }
@@ -376,9 +374,9 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
         self.0.posn().inner_join(self.1.posn())
     }
 
-    fn seek(&mut self, target: &Bound<X::Key>) {
+    fn seek(&mut self, target: Bound<X::Key>) {
         self.0.seek(target);
-        self.1.seek(&self.0.bound());
+        self.1.seek(self.0.bound());
     }
 }
 
@@ -390,9 +388,9 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for (X,Y) {
         self.0.posn().inner_join(self.1.posn())
     }
 
-    fn seek(&mut self, target: &Bound<X::Key>) {
+    fn seek(&mut self, target: Bound<X::Key>) {
         self.0.seek(target);
-        self.1.seek(&self.0.bound());
+        self.1.seek(self.0.bound());
     }
 }
 
@@ -412,7 +410,7 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterJoin<X,Y> {
         return self.0.posn().outer_join(self.1.posn())
     }
 
-    fn seek(&mut self, target: &Bound<X::Key>) {
+    fn seek(&mut self, target: Bound<X::Key>) {
         self.0.seek(target);
         self.1.seek(target);
     }
@@ -431,7 +429,7 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for Outer<X,Y> {
         }
     }
 
-    fn seek(&mut self, target: &Bound<X::Key>) {
+    fn seek(&mut self, target: Bound<X::Key>) {
         match self {
             Left(xs)  =>   xs.seek(target),
             Right(ys) =>   ys.seek(target),

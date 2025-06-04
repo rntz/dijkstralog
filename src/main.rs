@@ -30,8 +30,8 @@ fn example1() {
         println!("it: {it:?}");
         match p {
             Know(Done) => break,
-            Know(p) => it.seek(&p),
-            Have(k, _) => it.seek(&Greater(k)),
+            Know(p) => it.seek(p),
+            Have(k, _) => it.seek(Greater(k)),
         }
     }
 
@@ -44,9 +44,9 @@ fn example1() {
                 SliceRange::new(tuples, |tuple| tuple.1)
                 .collect_with(|y, tuples| {
                     assert!(tuples.len() == 1);
-                    *y
+                    y
                 });
-            (*x, vec)
+            (x, vec)
         });
     println!("trie: {trie:?}");
 }
@@ -70,7 +70,7 @@ fn example2() {
         .map(|tuples| SliceRange::new(tuples, |x| x.1).map(|slice| 5));
 
     let rtrie = r_.clone().collect_with(|a, bit| {
-        (*a, bit.collect_with(|b, v| (*b,v)))
+        (a, bit.collect_with(|b, v| (b, v)))
     });
     println!("rtrie: {rtrie:?}");
 
@@ -92,8 +92,8 @@ fn example2() {
 
     let vs = triangle_it
         .collect_with(|a, tuples| {
-            (*a, tuples.collect_with(|b, tuples| {
-                (*b, tuples.collect_with(|c, value| (*c,value)))
+            (a, tuples.collect_with(|b, tuples| {
+                (b, tuples.collect_with(|c, value| (c, value)))
             }))
         });
     println!("vs: {vs:?}");
@@ -116,17 +116,18 @@ fn example3() {
             (SliceBy::new(rB, |x| x.1), SliceRange::new(sBC, |x| x.0))
             .map(|(r, sC)| {
                 (SliceBy::new(sC, |x| x.1), SliceBy::new(tC, |x| x.1))
-                .map(move |(s, t)| r.2 * s.2 * t.2)
+                .map(|(s, t)| r.2 * s.2 * t.2)
             })
         });
 
     let vs = triangle_it
         .collect_with(|a, tuples| {
-            (*a, tuples.collect_with(|b, tuples| {
-                (*b, tuples.collect_with(|c, tuple| (*c, tuple)))
+            (a, tuples.collect_with(|b, tuples| {
+                (b, tuples.collect_with(|c, tuple| (c, tuple)))
             }))
         });
     println!("vs: {vs:?}");
+    assert!(vs.is_sorted());
 }
 
 fn main() {
