@@ -108,9 +108,9 @@ pub trait Seek {
 
     fn bound(&self) -> Bound<Self::Key> { return self.posn().to_bound() }
 
-    fn map<V, F>(self, func: F) -> MapValue<Self, F>
+    fn map<V, F>(self, func: F) -> Map<Self, F>
     where Self: Sized, F: Fn(Self::Value) -> V
-    { MapValue { iter: self, func } }
+    { Map { iter: self, func } }
 
     // fn imap<V, F>(self, func: F) -> IMap<Self, F>
     // where Self: Sized, F: Fn(Self::Key, Self::Value) -> V
@@ -287,9 +287,9 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for SliceRange<'a, X, F> {
 
 // ---------- MAP ON VALUES ----------
 #[derive(Clone)]
-pub struct MapValue<Iter, F> { iter: Iter, func: F }
+pub struct Map<Iter, F> { iter: Iter, func: F }
 
-impl<V, Iter, F> Seek for MapValue<Iter, F> where
+impl<V, Iter, F> Seek for Map<Iter, F> where
     Iter: Seek,
     F: Fn(Iter::Value) -> V
 {
