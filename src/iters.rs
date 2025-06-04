@@ -96,15 +96,15 @@ impl<K, V> Position<K, V> {
     // }
 }
 
-impl<K: Copy, V> Position<K, V> {
-    #[inline]
-    fn imap<U, F: FnOnce(K, V) -> U>(self, f: F) -> Position<K, U> {
-        match self {
-            Know(p) => Know(p),
-            Have(k, v) => { Have(k, f(k,v)) }
-        }
-    }
-}
+// impl<K: Copy, V> Position<K, V> {
+//     #[inline]
+//     fn imap<U, F: FnOnce(K, V) -> U>(self, f: F) -> Position<K, U> {
+//         match self {
+//             Know(p) => Know(p),
+//             Have(k, v) => { Have(k, f(k,v)) }
+//         }
+//     }
+// }
 
 
 // ---------- SEEKABLE ITERATORS ----------
@@ -124,9 +124,9 @@ pub trait Seek {
     where Self: Sized, F: Fn(Self::Value) -> V
     { MapValue { iter: self, func } }
 
-    fn imap<V, F>(self, func: F) -> IMap<Self, F>
-    where Self: Sized, F: Fn(Self::Key, Self::Value) -> V
-    { IMap { iter: self, func } }
+    // fn imap<V, F>(self, func: F) -> IMap<Self, F>
+    // where Self: Sized, F: Fn(Self::Key, Self::Value) -> V
+    // { IMap { iter: self, func } }
 
     fn join<U>(self, other: U) -> Join<Self,U>
     where Self: Sized, U: Seek<Key=Self::Key>
@@ -338,22 +338,22 @@ impl<V, Iter, F> Seek for MapValue<Iter, F> where
 }
 
 
-// ---------- MAP WITH KEY ----------
-#[derive(Clone)]
-pub struct IMap<S, F> { iter: S, func: F }
+// // ---------- MAP WITH KEY ----------
+// #[derive(Clone)]
+// pub struct IMap<S, F> { iter: S, func: F }
 
-impl<V, S: Seek, F: Fn(S::Key, S::Value) -> V> Seek for IMap<S, F> {
-    type Key = S::Key;
-    type Value = V;
+// impl<V, S: Seek, F: Fn(S::Key, S::Value) -> V> Seek for IMap<S, F> {
+//     type Key = S::Key;
+//     type Value = V;
 
-    fn posn(&self) -> Position<S::Key, V> {
-        self.iter.posn().imap(&self.func)
-    }
+//     fn posn(&self) -> Position<S::Key, V> {
+//         self.iter.posn().imap(&self.func)
+//     }
 
-    fn seek(&mut self, target: Bound<S::Key>) {
-        self.iter.seek(target)
-    }
-}
+//     fn seek(&mut self, target: Bound<S::Key>) {
+//         self.iter.seek(target)
+//     }
+// }
 
 
 // ---------- INNER JOIN ----------
