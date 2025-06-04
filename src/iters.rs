@@ -76,7 +76,6 @@ impl<K: Ord + Copy, V> Position<K, V> {
 }
 
 impl<K, V> Position<K, V> {
-    #[inline]
     pub fn map<U, F: FnOnce(V) -> U>(self, f: F) -> Position<K, U> {
         match self {
             Know(p) => Know(p),
@@ -125,13 +124,28 @@ pub trait Seek {
     // where Self: Sized, U: Seek<Key=Self::Key>
     // { OuterJoin(self, other) }
 
-    // TODO: can I remove this?
-    fn collect_with<X, F>(mut self, mut func: F) -> Vec<X>
-    where Self: Sized, F: FnMut(Self::Key, Self::Value) -> X
-    { self.iter().map(|(k,v)| func(k,v)).collect() }
-
     fn collect(mut self) -> Vec<(Self::Key, Self::Value)> where Self: Sized
     { self.iter().collect() }
+
+    fn keys(mut self) -> impl Iterator<Item = Self::Key> where Self: Sized
+    { self.iter().map(|(k,v)| k) }
+
+    // fn map_collect<X, F>(mut self, mut func: F) -> Vec<X>
+    // where Self: Sized, F: FnMut(Self::Key, Self::Value) -> X
+    // { self.iter().map(|(k,v)| func(k,v)).collect() }
+
+    // If the only reason we need the iterator is to look up a particular key,
+    // we can do that.
+    fn lookup(mut self, key: Self::Key) -> Option<Self::Value> where Self: Sized {
+        loop {
+            self.seek(Atleast(key));
+            return match self.posn() {
+                Know(p) if p.matches(key) => continue,
+                Have(k, v) if k == key => Some(v),
+                _ => None,
+            }
+        }
+    }
 
     fn iter(self) -> Iter<Self> where Self: Sized { Iter(self) }
 
@@ -314,20 +328,6 @@ impl<V, Iter, F> Seek for MapValue<Iter, F> where
 pub struct Join<X,Y>(pub X, pub Y);
 
 impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
-    type Key   = X::Key;
-    type Value = (X::Value, Y::Value);
-
-    fn posn(&self) -> Position<X::Key, (X::Value, Y::Value)> {
-        self.0.posn().inner_join(self.1.posn())
-    }
-
-    fn seek(&mut self, target: Bound<X::Key>) {
-        self.0.seek(target);
-        self.1.seek(self.0.bound());
-    }
-}
-
-impl<X: Seek, Y: Seek<Key=X::Key>> Seek for (X,Y) {
     type Key   = X::Key;
     type Value = (X::Value, Y::Value);
 

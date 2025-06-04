@@ -19,10 +19,10 @@ use iters::{
 
 // EXAMPLE 1: TRIES
 fn example1() {
-    let xs: &[(isize, &str)] = &[(1, "one"), (1, "wun"), (2, "two"), (2, "deux")];
+    let xys: &[(isize, &str)] = &[(1, "one"), (1, "wun"), (2, "two"), (2, "deux")];
 
     // Iterate through the slices on the first component of the tuples.
-    let mut it = SliceRange::new(xs, |x| x.0);
+    let mut it = SliceRange::new(xys, |t| t.0);
     loop {
         let p = it.posn();
         println!("{p:?}");
@@ -37,10 +37,8 @@ fn example1() {
 
     // Dump it into a trie using nested iteration.
     let trie: Vec<(isize, Vec<&str>)> =
-        SliceRange::new(xs, |tuple| tuple.0)
-        .map(|tuples|
-             SliceBy::new(tuples, |tuple| tuple.1)
-             .collect_with(|y, _tuple| y))
+        SliceRange::new(xys, |t| t.0)
+        .map(|ys| SliceBy::new(ys, |t| t.1).keys().collect())
         .collect();
     println!("trie: {trie:?}");
 }
@@ -61,9 +59,7 @@ fn example2() {
     let mut t_ac =
         SliceRange::new(t, |t| t.0).map(|cs| SliceRange::new(cs, |t| t.1).map(|_| 5));
 
-    let rtrie = r_ab.clone().collect_with(|a, bs| {
-        (a, bs.collect_with(|b, v| (b, v)))
-    });
+    let rtrie = r_ab.clone().map(|bs| bs.collect()).collect();
     println!("rtrie: {rtrie:?}");
 
     // Let's plan a triangle query!
@@ -95,11 +91,11 @@ fn example3() {
 
     // Let's plan a triangle query!
     let triangle_it =
-        (SliceRange::new(rAB, |x| x.0), SliceRange::new(tAC, |x| x.0))
+        SliceRange::new(rAB, |x| x.0).join(SliceRange::new(tAC, |x| x.0))
         .map(|(rB, tC)| {
-            (SliceBy::new(rB, |x| x.1), SliceRange::new(sBC, |x| x.0))
+            SliceBy::new(rB, |x| x.1).join(SliceRange::new(sBC, |x| x.0))
             .map(|(r, sC)| {
-                (SliceBy::new(sC, |x| x.1), SliceBy::new(tC, |x| x.1))
+                SliceBy::new(sC, |x| x.1).join(SliceBy::new(tC, |x| x.1))
                 .map(|(s, t)| r.2 * s.2 * t.2)
             })
         });
