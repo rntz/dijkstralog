@@ -287,20 +287,17 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for SliceRange<'a, X, F> {
 
 // ---------- MAP ON VALUES ----------
 #[derive(Clone)]
-pub struct Map<Iter, F> { iter: Iter, func: F }
+pub struct Map<S, F> { iter: S, func: F }
 
-impl<V, Iter, F> Seek for Map<Iter, F> where
-    Iter: Seek,
-    F: Fn(Iter::Value) -> V
-{
-    type Key = Iter::Key;
+impl<V, S: Seek, F: Fn(S::Value) -> V> Seek for Map<S, F> {
+    type Key = S::Key;
     type Value = V;
 
-    fn posn(&self) -> Position<Iter::Key, V> {
+    fn posn(&self) -> Position<S::Key, V> {
         self.iter.posn().map(&self.func)
     }
 
-    fn seek(&mut self, target: Bound<Iter::Key>) {
+    fn seek(&mut self, target: Bound<S::Key>) {
         self.iter.seek(target)
     }
 }
