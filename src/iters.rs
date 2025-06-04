@@ -1,9 +1,12 @@
 use std::cmp::Ordering;
-// use core::ops::{Add,Mul};
-use std::fmt;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum Bound<K> { Init, Atleast(K), Greater(K), Done }
+pub enum Bound<K> {
+    Init,
+    Atleast(K),
+    Greater(K),
+    Done,
+}
 use Bound::*;
 
 // this could be extended to handle K: PartialOrd but we don't need it
@@ -34,7 +37,10 @@ impl<K: Ord> Bound<K> {
 
 // ---------- POSITIONS ----------
 #[derive(PartialEq, Eq, Debug)]
-pub enum Position<K, V> { Have(K, V), Know(Bound<K>) }
+pub enum Position<K, V> {
+    Have(K, V),
+    Know(Bound<K>),
+}
 use Position::*;
 
 impl<K: Ord, V> Position<K, V> {
@@ -172,27 +178,27 @@ impl<S: Seek> Iterator for Iter<S> {
 }
 
 
-// ---------- SEEKING IN SORTED LISTS ----------
-#[derive(Clone)]
-struct Slice<'a, K, V> {
-    elems: &'a [(K, V)],
-    index: usize,
-}
+// // ---------- SEEKING IN SORTED LISTS ----------
+// #[derive(Clone)]
+// struct Slice<'a, K, V> {
+//     elems: &'a [(K, V)],
+//     index: usize,
+// }
 
-impl<'a, K: Ord, V> Seek for Slice<'a, K, V> {
-    type Key = &'a K;
-    type Value = &'a V;
+// impl<'a, K: Ord, V> Seek for Slice<'a, K, V> {
+//     type Key = &'a K;
+//     type Value = &'a V;
 
-    fn posn(&self) -> Position<&'a K, &'a V> {
-        if self.index >= self.elems.len() { return Know(Done) }
-        let (k, v) = &self.elems[self.index];
-        return Have(k, v);
-    }
+//     fn posn(&self) -> Position<&'a K, &'a V> {
+//         if self.index >= self.elems.len() { return Know(Done) }
+//         let (k, v) = &self.elems[self.index];
+//         return Have(k, v);
+//     }
 
-    fn seek(&mut self, target: Bound<&'a K>) {
-        self.index += self.elems[self.index..].partition_point(|x| !target.matches(&x.0))
-    }
-}
+//     fn seek(&mut self, target: Bound<&'a K>) {
+//         self.index += self.elems[self.index..].partition_point(|x| !target.matches(&x.0))
+//     }
+// }
 
 
 // ---------- SEEKING BY A FUNCTION IN A SORTED LIST ----------
@@ -239,8 +245,8 @@ pub struct SliceRange<'a, X, F> {
     get_key: F,
 }
 
-impl<'a, X, F> fmt::Debug for SliceRange<'a, X, F> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+impl<'a, X, F> std::fmt::Debug for SliceRange<'a, X, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_struct("SliceRange")
             .field("index_lo", &self.index_lo)
             .field("index_hi", &self.index_hi)
