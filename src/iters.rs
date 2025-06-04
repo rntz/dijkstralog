@@ -83,17 +83,6 @@ impl<K, V> Position<K, V> {
             Have(k, v) => Have(k, f(v)),
         }
     }
-
-    // pub fn filter_map<U, F>(self, f: F) -> Position<K, U>
-    // where F : FnOnce(&K, V) -> Option<U> {
-    //     match self {
-    //         Know(p) => Know(p),
-    //         Have(k, v) => match f(&k, v) {
-    //             Some(u) => Have(k, u),
-    //             None    => Know(Greater(k)),
-    //         }
-    //     }
-    // }
 }
 
 // impl<K: Copy, V> Position<K, V> {
