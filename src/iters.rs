@@ -151,11 +151,13 @@ pub trait Seek {
     fn collect(mut self) -> Vec<(Self::Key, Self::Value)> where Self: Sized {
         self.collect_with(|k,v| (k, v))
     }
+
+    fn iter(self) -> Iter<Self> where Self: Sized { Iter(self) }
 }
 
 
 // Rust-native iteration over seekable iterators
-pub struct Iter<S: Seek>(S);
+pub struct Iter<S: Seek>(pub S);
 
 impl<S: Seek> Iterator for Iter<S> {
     type Item = (S::Key, S::Value);

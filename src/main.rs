@@ -120,12 +120,41 @@ fn example3() {
             })
         });
 
-    let vs = triangle_it
-        .collect_with(|a, tuples| {
-            (a, tuples.collect_with(|b, tuples| {
-                (b, tuples.collect_with(|c, tuple| (c, tuple)))
-            }))
-        });
+    // Flatten it back to a sorted vector.
+    let mut vs: Vec<(&str, usize, &str, i8)> = Vec::new();
+    for (a, bcs) in triangle_it.clone().iter() {
+        for (b, cs) in bcs.iter() {
+            for (c, anno) in cs.iter() {
+                vs.push((a, b, c, anno))
+            }
+        }
+    }
+    println!("vs: {vs:?}");
+    assert!(vs.is_sorted());
+}
+
+// EXAMPLE 4
+#[allow(non_snake_case)]
+fn example4() {
+    let rAB: &[(&str,  usize, i8)] = &[("a", 1, 1), ("a", 2, 2), ("b", 1, 1), ("b", 2, 2)];
+    let sBC: &[(usize, &str,  i8)] = &[(1, "one", 1), (1, "wun", 1), (2, "deux", 2), (2, "two", 2)];
+    let tAC: &[(&str,  &str,  i8)]  = &[("a", "one", 1), ("b", "deux", 2), ("mary", "mary", 3)];
+    assert!(rAB.is_sorted());
+    assert!(sBC.is_sorted());
+    assert!(tAC.is_sorted());
+
+    // Triangle query into a sorted vector.
+    let mut vs: Vec<(&str, usize, &str, i8)> = Vec::new();
+    let rt = (SliceRange::new(rAB, |x| x.0), SliceRange::new(tAC, |x| x.0));
+    for (a, (rB, tC)) in rt.iter() {
+        let rs = (SliceBy::new(rB, |x| x.1), SliceRange::new(sBC, |x| x.0));
+        for (b, (r, sC)) in rs.iter() {
+            let st = (SliceBy::new(sC, |x| x.1), SliceBy::new(tC, |x| x.1));
+            for (c, (s, t)) in st.iter() {
+                vs.push((a, b, c, r.2 * s.2 * t.2))
+            }
+        }
+    }
     println!("vs: {vs:?}");
     assert!(vs.is_sorted());
 }
@@ -137,4 +166,6 @@ fn main() {
     example2();
     println!();
     example3();
+    println!();
+    example4();
 }
