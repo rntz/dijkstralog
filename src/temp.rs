@@ -22,7 +22,9 @@ macro_rules! projection {
 }
 
 macro_rules! relationize_helper {
-    ($e:expr, ($($_:ty),*), ()) => { () };
+    // We can interpret the sorted list as a "bag" by counting the number of
+    // occurrences when we reach the bottom level.
+    ($e:expr, ($($_:ty),*), ()) => { $e.len() };
     ($e:expr, ($($t1:ty),*), ($t:ty $(, $t2:ty)*)) => {
         SliceRange::new($e, projection!(($($t1),*), ($($t2),*)))
             .map(|xs| relationize_helper!(xs, ($($t1,)* $t), ($($t2),*)))
@@ -36,12 +38,12 @@ macro_rules! relationize {
 fn example_macro() {
     let xs: &[(&str,)] = &[("a",)];
     let it = relationize!(xs, &str);
-    let vs: Vec<&str> = it.keys().collect();
+    let vs: Vec<_> = it.collect();
     println!("vs: {vs:?}");
 
     let xs: &[(&str, usize)] = &[("a", 0)];
     let it = relationize!(xs, &str, usize);
-    let vs: Vec<(&str, Vec<usize>)> = it.map(|x| x.keys().collect()).collect();
+    let vs: Vec<(&str, Vec<_>)> = it.map(|x| x.collect()).collect();
     println!("vs: {vs:?}");
 }
 
