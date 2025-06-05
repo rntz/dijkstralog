@@ -7,14 +7,8 @@
   (unless test
     (error "ASSERTION FAILURE:" 'test)))
 
-(define (reverse-append revs tail)
-  (if (null? revs) tail
-      (reverse-append (cdr revs) (cons (car revs) tail))))
-(define-syntax-rule (for*/append (for-clause ...) body-or-break ... body)
-  (for*/fold ([reverse-results '()] #:result (reverse reverse-results))
-             (for-clause ...)
-    body-or-break ...
-    (reverse-append body reverse-results)))
+(define-syntax-rule (for*/append (for-clause ...) body ... expr)
+  (for*/list (for-clause ... #:do [body ...] [x expr]) x))
 
 (define term? any/c)
 (define var? symbol?)
@@ -60,7 +54,7 @@
   (define counts (make-hash))
   (define atom-orders
     (for/list ([atom query])
-      (deduplicate (atom-args atom))))
+      (deduplicate (filter var? (atom-args atom)))))
   (for* ([order atom-orders] [x order])
     (hash-update! counts x add1 0))
   (define levels (make-hash))
@@ -167,11 +161,13 @@
   (compile '(a b c) '((R a b) (S b c) (T c 17 a)))
   ;; make sure it looks up the second b in S.
   (compile '(a b c) '((R a b) (S b b) (T a 17 c)))
-
-  ;; BUG: generates an unnecessary index for the repeated b in S.
-  ;; this is because subsequence is the wrong check!
+  ;; make sure it looks up the second b in S.
   (compile '(a b c) '((R a b) (S b c b)))
 
   ;; make sure we can compile a sort body.
   (compile-atom '(T c 17 a))
+
+  ;; make sure heuristic-var-order can handle constants and repeated vars
+  (heuristic-var-order '((T c 17 a)))
+  (heuristic-var-order '((T c a c)))
   )
