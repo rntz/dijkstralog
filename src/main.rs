@@ -1,10 +1,5 @@
 #![allow(dead_code, unused_imports, unused_variables, unused_mut)]
 
-// old code that we don't need but still want to compile
-mod lftj;
-mod example;
-
-// new code
 mod iter;
 
 use iter::{
