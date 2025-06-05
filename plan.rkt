@@ -116,7 +116,7 @@
                  [new-vars (filter (lambda (x) (member x atom-var-order)) var-order)]
                  [new-atom `(,new-pred ,@new-vars)]
                  ;; TODO: re-use indices via hash-consing re-sortings
-                 [sort-decl `(sort ,new-atom ,atom)])
+                 [sort-decl `(sort ,atom ,new-atom)])
             (set! decls (cons sort-decl decls))
             new-atom))))
 
