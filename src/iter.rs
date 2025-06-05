@@ -244,22 +244,22 @@ impl<S: Seek> Seek for Option<S> {
 // }
 
 
-// ---------- SEEKING BY A FUNCTION IN A SORTED LIST ----------
+// ---------- SEEKING IN A SORTED DUPLICATE-FREE LIST ----------
 // Assumes the underlying slice is sorted by get_key() with NO DUPLICATES.
 #[derive(Clone)]
-pub struct SliceBy<'a, X, F> {
+pub struct Tuples<'a, X, F> {
     elems: &'a [X],
     index: usize,
     get_key: F,
 }
 
-impl<'a, K: Ord + Clone, X, F: Fn(&X) -> K> SliceBy<'a, X, F> {
-    pub fn new(elems: &'a [X], get_key: F) -> SliceBy<'a ,X, F> {
-        SliceBy { elems, index: 0, get_key }
+impl<'a, K: Ord + Clone, X, F: Fn(&X) -> K> Tuples<'a, X, F> {
+    pub fn from(elems: &'a [X], get_key: F) -> Tuples<'a ,X, F> {
+        Tuples { elems, index: 0, get_key }
     }
 }
 
-impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for SliceBy<'a, X, F> {
+impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Tuples<'a, X, F> {
     type Key = K;
     type Value = &'a X;
 
@@ -277,26 +277,20 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for SliceBy<'a, X, F> {
 }
 
 
-// ---------- SEEKING RANGES IN SORTED LISTS ----------
+// ---------- SEEKING IN A SORTED LIST WITH DUPLICATES ----------
 // Assumes the underlying slice is sorted by get_key(). Duplicates are allowed;
 // produces non-empty sub-slices whose elements all have the same key.
 #[derive(Clone)]
-pub struct SliceRange<'a, X, F> {
+pub struct Ranges<'a, X, F> {
     elems: &'a [X],
     index_lo: usize,
     index_hi: usize,
     get_key: F,
 }
 
-// // TODO use or delete this
-// pub fn from_ranges<X, K, F>(elems: &[X], get_key: F) -> SliceRange<X, F>
-// where K: Ord, F: Fn(&X) -> K {
-//     return SliceRange::new(elems, get_key)
-// }
-
-impl<'a, X, F> std::fmt::Debug for SliceRange<'a, X, F> {
+impl<'a, X, F> std::fmt::Debug for Ranges<'a, X, F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        f.debug_struct("SliceRange")
+        f.debug_struct("Ranges")
             .field("index_lo", &self.index_lo)
             .field("index_hi", &self.index_hi)
             // .field("elems", &self.elems)
@@ -304,9 +298,9 @@ impl<'a, X, F> std::fmt::Debug for SliceRange<'a, X, F> {
     }
 }
 
-impl<'a, X, K: Ord, F: Fn(&X) -> K> SliceRange<'a, X, F> {
-    pub fn new(elems: &'a [X], get_key: F) -> SliceRange<'a, X, F> {
-        let mut s = SliceRange { elems, index_lo: 0, index_hi: 0, get_key };
+impl<'a, X, K: Ord, F: Fn(&X) -> K> Ranges<'a, X, F> {
+    pub fn from(elems: &'a [X], get_key: F) -> Ranges<'a, X, F> {
+        let mut s = Ranges { elems, index_lo: 0, index_hi: 0, get_key };
         // NB. This initial seek_hi() might be wasted work if the first
         // operation is a seek() to some higher key. I could avoid it by making
         // posn() first check whether index_lo == index_hi. Is that worth it?
@@ -324,7 +318,7 @@ impl<'a, X, K: Ord, F: Fn(&X) -> K> SliceRange<'a, X, F> {
     }
 }
 
-impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for SliceRange<'a, X, F> {
+impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Ranges<'a, X, F> {
     type Key = K;
     type Value = &'a [X];
 

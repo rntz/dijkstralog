@@ -8,8 +8,8 @@ use iter::{
     Position::{*},
     Bound,
     Bound::{*},
-    SliceRange,
-    SliceBy,
+    Ranges,
+    Tuples,
     Seek,
 };
 
@@ -18,7 +18,7 @@ fn example1() {
     let xys: &[(isize, &str)] = &[(1, "one"), (1, "wun"), (2, "two"), (2, "deux")];
 
     // Iterate through the slices on the first component of the tuples.
-    let mut it = SliceRange::new(xys, |t| t.0);
+    let mut it = Ranges::from(xys, |t| t.0);
     loop {
         let p = it.posn();
         println!("{p:?}");
@@ -33,8 +33,8 @@ fn example1() {
 
     // Dump it into a trie using nested iteration.
     let trie: Vec<(isize, Vec<&str>)> =
-        SliceRange::new(xys, |t| t.0)
-        .map(|ys| SliceBy::new(ys, |t| t.1).keys().collect())
+        Ranges::from(xys, |t| t.0)
+        .map(|ys| Tuples::from(ys, |t| t.1).keys().collect())
         .collect();
     println!("trie: {trie:?}");
 }
@@ -49,11 +49,11 @@ fn example2() {
     assert!(t.is_sorted());
 
     let mut r_ab =
-        SliceRange::new(r, |t| t.0).map(|bs| SliceRange::new(bs, |t| t.1).map(|_| 2));
+        Ranges::from(r, |t| t.0).map(|bs| Ranges::from(bs, |t| t.1).map(|_| 2));
     let mut s_bc =
-        SliceRange::new(s, |t| t.0).map(|cs| SliceRange::new(cs, |t| t.1).map(|_| 3));
+        Ranges::from(s, |t| t.0).map(|cs| Ranges::from(cs, |t| t.1).map(|_| 3));
     let mut t_ac =
-        SliceRange::new(t, |t| t.0).map(|cs| SliceRange::new(cs, |t| t.1).map(|_| 5));
+        Ranges::from(t, |t| t.0).map(|cs| Ranges::from(cs, |t| t.1).map(|_| 5));
 
     let rtrie: Vec<(_, Vec<_>)> = r_ab.clone().map(|bs| bs.collect()).collect();
     println!("rtrie: {rtrie:?}");
@@ -87,14 +87,14 @@ fn example3() {
 
     // Let's plan a triangle query!
     let triangle_it =
-        SliceRange::new(rAB, |x| x.0)
-        .join(SliceRange::new(tAC, |x| x.0))
+        Ranges::from(rAB, |x| x.0)
+        .join(Ranges::from(tAC, |x| x.0))
         .map(|(rB, tC)| {
-            SliceBy::new(rB, |x| x.1)
-            .join(SliceRange::new(sBC, |x| x.0))
+            Tuples::from(rB, |x| x.1)
+            .join(Ranges::from(sBC, |x| x.0))
             .map(|(r, sC)| {
-                SliceBy::new(sC, |x| x.1)
-                .join(SliceBy::new(tC, |x| x.1))
+                Tuples::from(sC, |x| x.1)
+                .join(Tuples::from(tC, |x| x.1))
                 .map(|(s, t)| r.2 * s.2 * t.2)
             })
         });
@@ -124,11 +124,11 @@ fn example4() {
 
     // Triangle query into a sorted vector.
     let mut vs: Vec<(&str, usize, &str, i8)> = Vec::new();
-    let rt = SliceRange::new(rAB, |x| x.0).join(SliceRange::new(tAC, |x| x.0));
+    let rt = Ranges::from(rAB, |x| x.0).join(Ranges::from(tAC, |x| x.0));
     for (a, (rB, tC)) in rt.iter() {
-        let rs = SliceBy::new(rB, |x| x.1).join(SliceRange::new(sBC, |x| x.0));
+        let rs = Tuples::from(rB, |x| x.1).join(Ranges::from(sBC, |x| x.0));
         for (b, (r, sC)) in rs.iter() {
-            let st = SliceBy::new(sC, |x| x.1).join(SliceBy::new(tC, |x| x.1));
+            let st = Tuples::from(sC, |x| x.1).join(Tuples::from(tC, |x| x.1));
             for (c, (s, t)) in st.iter() {
                 vs.push((a, b, c, r.2 * s.2 * t.2))
             }
@@ -143,7 +143,7 @@ fn example4() {
 #[allow(non_snake_case)]
 fn example5() {
     let xs: &[(isize, &str)] = &[(17, "hello"), (17, "goodbye"), (23, "hello"), (27, "goodbye")];
-    let xs_it = SliceRange::new(xs, |x| x.0);
+    let xs_it = Ranges::from(xs, |x| x.0);
     let point = xs_it.clone().lookup(17);
 
     let rAB: &[(&str,  usize, i8)] = &[("a", 1, 1), ("a", 2, 2), ("b", 1, 1), ("b", 2, 2)];
@@ -157,15 +157,15 @@ fn example5() {
     // Triangle query into a sorted vector.
     let mut vs: Vec<(&str, usize, &str, i8)> = Vec::new();
 
-    let r_ab = SliceRange::new(rAB, |x| x.0);
-    let s_bc = SliceRange::new(sBC, |x| x.0);
-    let t_axc = SliceRange::new(tAXC, |x| x.0);
+    let r_ab = Ranges::from(rAB, |x| x.0);
+    let s_bc = Ranges::from(sBC, |x| x.0);
+    let t_axc = Ranges::from(tAXC, |x| x.0);
     for (a, (rB, tXC)) in r_ab.join(t_axc).iter() {
-        let r_b = SliceBy::new(rB, |x| x.1);
-        let t_c = match SliceRange::new(tXC, |x| x.1).lookup(17)
-                  { Some(s) => SliceBy::new(s, |x| x.2), None => continue, };
+        let r_b = Tuples::from(rB, |x| x.1);
+        let t_c = match Ranges::from(tXC, |x| x.1).lookup(17)
+                  { Some(s) => Tuples::from(s, |x| x.2), None => continue, };
         for (b, (r, sC)) in r_b.join(s_bc.clone()).iter() {
-            let s_c = SliceBy::new(sC, |x| x.1);
+            let s_c = Tuples::from(sC, |x| x.1);
             for (c, (s, t)) in s_c.join(t_c.clone()).iter() {
                 vs.push((a, b, c, r.2 * s.2 * t.3))
             }
