@@ -55,7 +55,7 @@ fn example2() {
     let mut t_ac =
         SliceRange::new(t, |t| t.0).map(|cs| SliceRange::new(cs, |t| t.1).map(|_| 5));
 
-    let rtrie = r_ab.clone().map(|bs| bs.collect()).collect();
+    let rtrie: Vec<(_, Vec<_>)> = r_ab.clone().map(|bs| bs.collect()).collect();
     println!("rtrie: {rtrie:?}");
 
     // Let's plan a triangle query!
@@ -69,8 +69,8 @@ fn example2() {
             })
         });
 
-    let triangles = triangle_it
-        .map(|bcs| bcs.map(|cs| cs.collect()).collect())
+    let triangles: Vec<(&str, Vec<(isize, Vec<(&str, isize)>)>)> =
+        triangle_it.map(|bcs| bcs.map(|cs| cs.collect()).collect())
         .collect();
     println!("triangles: {triangles:?}");
 }

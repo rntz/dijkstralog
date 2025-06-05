@@ -145,7 +145,8 @@ pub trait Seek {
     // where Self: Sized, U: Seek<Key=Self::Key>
     // { OuterJoin(self, other) }
 
-    fn collect(mut self) -> Vec<(Self::Key, Self::Value)> where Self: Sized
+    fn collect<B>(mut self) -> B
+    where Self: Sized, B: FromIterator<(Self::Key, Self::Value)>
     { self.iter().collect() }
 
     fn keys(mut self) -> impl Iterator<Item = Self::Key> where Self: Sized
