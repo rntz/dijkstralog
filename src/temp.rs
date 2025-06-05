@@ -21,17 +21,17 @@ macro_rules! projection {
     { |&($(underscore!($t1),)* x, $(underscore!($t2),)*)| x }
 }
 
-macro_rules! helper {
+macro_rules! relationize_helper {
     ($e:expr, ($($_:ty),*), ()) => { () };
     ($e:expr, $_:tt, ()) => { panic!("VERY BAD, NO GOOD") };
     ($e:expr, ($($t1:ty),*), ($t:ty $(, $t2:ty)*)) => {
         SliceRange::new($e, projection!(($($t1),*), ($($t2),*)))
-            .map(|xs| helper!(xs, ($($t1,)* $t), ($($t2),*)))
+            .map(|xs| relationize_helper!(xs, ($($t1,)* $t), ($($t2),*)))
     };
 }
 
 macro_rules! relationize {
-    ($e:expr $(, $t:ty)*) => { helper!($e, (), ($($t),*)) };
+    ($e:expr $(, $t:ty)*) => { relationize_helper!($e, (), ($($t),*)) };
 }
 
 fn example_macro() {
