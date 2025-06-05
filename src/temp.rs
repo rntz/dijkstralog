@@ -6,8 +6,44 @@ use crate::iter::{
 };
 
 pub fn main() {
+    println!("===== EXAMPLE MACRO 2 =====");
+    example_macro2();
+
+    println!("\n===== EXAMPLE MACRO =====");
     example_macro();
-    // example2();
+
+    println!("\n===== EXAMPLE 2 =====");
+    example2();
+}
+
+// a little nested loop language
+macro_rules! nest {
+    {} => {};
+
+    { do $s:stmt; $($rest:tt)* }
+    => { $s nest!($($rest)*) };
+
+    { for $p:pat in $e:expr; $($rest:tt)* }
+    => { for $p in $e { nest!($($rest)*); } };
+
+    { if $e:expr; $($rest:tt)* }
+    => { if !$e { continue; }; nest!($($rest)*) }
+}
+
+fn example_macro2() {
+    let xs: &[&str] = &["johnny", "ursula"];
+    let ys: &[&str] = &["bg", "kl"];
+    assert!(xs.is_sorted());
+    assert!(ys.is_sorted());
+
+    let mut vs: Vec<(&str, &str)> = Vec::new();
+    nest! {
+        for k1 in SliceBy::new(xs, |x| *x).keys();
+        for k2 in SliceBy::new(ys, |x| *x).keys();
+        if k2 < k1;
+        do vs.push((k1, k2));
+    };
+    println!("vs: {vs:?}");
 }
 
 // ---------- GOAL 1: MACRO turning a LIST OF TUPLES into NESTED ITERATORS ----------
@@ -36,30 +72,30 @@ macro_rules! relationize {
 }
 
 fn example_macro() {
-    let xs: &[(&str,)] = &[("a",)];
+    let xs: &[(&str,)] = &[("a",), ("a",)];
     let it = relationize!(xs, &str);
     let vs: Vec<_> = it.collect();
     println!("vs: {vs:?}");
 
-    let xs: &[(&str, usize)] = &[("a", 0)];
-    let it = relationize!(xs, &str, usize);
+    let xs: &[(&str, &str)] = &[("a", "A"), ("b", "B")];
+    let it = relationize!(xs, &str, &str);
     let vs: Vec<(&str, Vec<_>)> = it.map(|x| x.collect()).collect();
     println!("vs: {vs:?}");
 }
 
 fn example2() {
-    let r: &[(&str, usize, i8)] = &[("a", 1, 1), ("a", 2, 1), ("b", 1, 1), ("b", 2, 1)];
+    let r: &[(&str, usize)] = &[("a", 1), ("a", 2), ("b", 1), ("b", 2)];
     // ↓ GOAL 1: GENERATE THIS CODE ↓
     let mut r_ab =
         SliceRange::new(r, |t| t.0)
-        .map(|bs| SliceBy::new(bs, |t| t.1).map(|t| t.2));
+        .map(|bs| SliceBy::new(bs, |t| t.1).map(|_| ()));
     // ↑ GOAL 1: GENERATE THIS CODE ↑
 
     // Next goal is to generate this code:
     let mut vs = Vec::new();
     for (a, r_b) in r_ab.iter() {
-        for (b, ann) in r_b.iter() {
-            vs.push((a, b, ann));
+        for (b, ()) in r_b.iter() {
+            vs.push((a, b));
         }
     }
     println!("vs: {vs:?}");
