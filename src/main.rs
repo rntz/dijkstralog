@@ -158,50 +158,23 @@ fn example5() {
     assert!(sBC.is_sorted());
     assert!(tAXC.is_sorted());
 
-    let r_ab = SliceRange::new(rAB, |x| x.0).map(|bs| SliceBy::new(bs, |x| x.1).map(|r| r.2));
-    let s_bc = SliceRange::new(sBC, |x| x.0).map(|cs| SliceBy::new(cs, |x| x.1).map(|s| s.2));
-    let t_axc = SliceRange::new(tAXC, |x| x.0)
-        .map(|xcs| SliceRange::new(xcs, |x| x.1).map(
-            |cs| SliceBy::new(cs, |x| x.2).map(|t| t.3)));
-
-    // // Triangle query into a sorted vector.
-    // let mut vs: Vec<(&str, usize, &str, i8)> = Vec::new();
-    // for (a, (r_b, t_xc)) in r_ab.join(t_axc).iter() {
-    //     let t_c = t_xc.lookup(17);
-    //     for (b, (r, s_c)) in r_b.join(s_bc.clone()).iter() {
-    //         for (c, (s, t)) in s_c.join(t_c.clone()).iter() {
-    //             vs.push((a, b, c, r * s * t))
-    //         }
-    //     }
-    // }
-
-    // Optimized triangle query into a sorted vector?
+    // Triangle query into a sorted vector.
     let mut vs: Vec<(&str, usize, &str, i8)> = Vec::new();
-    for (a, (r_b, t_xc)) in r_ab.join(t_axc).iter() {
-        // Would I get this short-circuiting behavior automagically with a
-        // .join()-based impl? Probably not! The lookup needs to be fused with
-        // the layer _above_ it, not _below_ it!
-        let t_c = match t_xc.lookup(17) { Some(s) => s, None => continue, };
-        for (b, (r, s_c)) in r_b.join(s_bc.clone()).iter() {
+
+    let r_ab = SliceRange::new(rAB, |x| x.0);
+    let s_bc = SliceRange::new(sBC, |x| x.0);
+    let t_axc = SliceRange::new(tAXC, |x| x.0);
+    for (a, (rB, tXC)) in r_ab.join(t_axc).iter() {
+        let r_b = SliceBy::new(rB, |x| x.1);
+        let t_c = match SliceRange::new(tXC, |x| x.1).lookup(17)
+                  { Some(s) => SliceBy::new(s, |x| x.2), None => continue, };
+        for (b, (r, sC)) in r_b.join(s_bc.clone()).iter() {
+            let s_c = SliceBy::new(sC, |x| x.1);
             for (c, (s, t)) in s_c.join(t_c.clone()).iter() {
-                vs.push((a, b, c, r * s * t))
+                vs.push((a, b, c, r.2 * s.2 * t.3))
             }
         }
     }
-
-    // // Triangle query into a sorted vector.
-    // let mut vs: Vec<(&str, usize, &str, i8)> = Vec::new();
-    // let rt = SliceRange::new(rAB, |x| x.0).join(SliceRange::new(tAXC, |x| x.0));
-    // for (a, (rB, tXC)) in rt.iter() {
-    //     let tC = SliceRange::new(tXC, |x| x.1).lookup(17);
-    //     let rs = SliceBy::new(rB, |x| x.1).join(SliceRange::new(sBC, |x| x.0));
-    //     for (b, (r, sC)) in rs.iter() {
-    //         let st = SliceBy::new(sC, |x| x.1).join(tC.map(|tC| SliceBy::new(tC, |x| x.2)));
-    //         for (c, (s, t)) in st.iter() {
-    //             vs.push((a, b, c, r.2 * s.2 * t.3))
-    //         }
-    //     }
-    // }
 
     println!("vs: {vs:?}");
     assert!(vs.is_sorted());
