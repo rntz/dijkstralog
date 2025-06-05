@@ -89,16 +89,16 @@ impl<K, V> Position<K, V> {
         }
     }
 
-    // pub fn filter_map<U, F>(self, f: F) -> Position<K, U>
-    // where F : FnOnce(&K, V) -> Option<U> {
-    //     match self {
-    //         Know(p) => Know(p),
-    //         Have(k, v) => match f(&k, v) {
-    //             Some(u) => Have(k, u),
-    //             None    => Know(Greater(k)),
-    //         }
-    //     }
-    // }
+    pub fn filter_map<U, F>(self, f: F) -> Position<K, U>
+    where F: FnOnce(V) -> Option<U> {
+        match self {
+            Know(p) => Know(p),
+            Have(k, v) => match f(v) {
+                Some(u) => Have(k, u),
+                None    => Know(Greater(k)),
+            }
+        }
+    }
 }
 
 // impl<K: Copy, V> Position<K, V> {
@@ -128,6 +128,10 @@ pub trait Seek {
     fn map<V, F>(self, func: F) -> Map<Self, F>
     where Self: Sized, F: Fn(Self::Value) -> V
     { Map { iter: self, func } }
+
+    fn filter_map<V, F>(self, func: F) -> FilterMap<Self, F>
+    where Self: Sized, F: Fn(Self::Value) -> Option<V>
+    { FilterMap { iter: self, func } }
 
     // fn imap<V, F>(self, func: F) -> IMap<Self, F>
     // where Self: Sized, F: Fn(Self::Key, Self::Value) -> V
@@ -167,15 +171,11 @@ pub trait Seek {
         }
     }
 
-    // fn filter_map<V, F>(self, f: F) -> impl Seek<Key = Self::Key, Value = V>
-    // where Self: Sized, F: Fn(Self::Value) -> Option<V> {
-    //     todo!();
-    // }
-
-    // fn fuse_lookup(self, key: <Self::Value as Seek>::Key) -> impl Seek<Key = Self::Key, Value = <Self::Value as Seek>::Value>
-    // where Self: Sized, Self::Value: Seek {
-    //     self.filter_map(|v| v.lookup(key))
-    // }
+    // Fuses a lookup onto the value of an iterator.
+    fn map_lookup(self, key: <Self::Value as Seek>::Key) -> impl Seek<Key = Self::Key, Value = <Self::Value as Seek>::Value>
+    where Self: Sized, Self::Value: Seek {
+        self.filter_map(move |v| v.lookup(key))
+    }
 
     fn iter(self) -> Iter<Self> where Self: Sized { Iter(self) }
 
@@ -355,6 +355,23 @@ impl<V, S: Seek, F: Fn(S::Value) -> V> Seek for Map<S, F> {
 
     fn posn(&self) -> Position<S::Key, V> {
         self.iter.posn().map(&self.func)
+    }
+
+    fn seek(&mut self, target: Bound<S::Key>) {
+        self.iter.seek(target)
+    }
+}
+
+
+// ---------- FILTER MAP ----------
+#[derive(Clone)]
+pub struct FilterMap<S, F> { iter: S, func: F }
+
+impl<V, S: Seek, F: Fn(S::Value) -> Option<V>> Seek for FilterMap<S, F> {
+    type Key = S::Key;
+    type Value = V;
+    fn posn(&self) -> Position<S::Key, V> {
+        self.iter.posn().filter_map(&self.func)
     }
 
     fn seek(&mut self, target: Bound<S::Key>) {
