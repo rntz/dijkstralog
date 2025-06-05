@@ -254,7 +254,7 @@ pub struct Tuples<'a, X, F> {
 }
 
 impl<'a, K: Ord + Clone, X, F: Fn(&X) -> K> Tuples<'a, X, F> {
-    pub fn from(elems: &'a [X], get_key: F) -> Tuples<'a ,X, F> {
+    pub fn of(elems: &'a [X], get_key: F) -> Tuples<'a ,X, F> {
         Tuples { elems, index: 0, get_key }
     }
 }
@@ -299,7 +299,7 @@ impl<'a, X, F> std::fmt::Debug for Ranges<'a, X, F> {
 }
 
 impl<'a, X, K: Ord, F: Fn(&X) -> K> Ranges<'a, X, F> {
-    pub fn from(elems: &'a [X], get_key: F) -> Ranges<'a, X, F> {
+    pub fn of(elems: &'a [X], get_key: F) -> Ranges<'a, X, F> {
         let mut s = Ranges { elems, index_lo: 0, index_hi: 0, get_key };
         // NB. This initial seek_hi() might be wasted work if the first
         // operation is a seek() to some higher key. I could avoid it by making

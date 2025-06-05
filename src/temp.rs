@@ -38,8 +38,8 @@ fn example_macro2() {
 
     let mut vs: Vec<(&str, &str)> = Vec::new();
     nest! {
-        for k1 in Tuples::from(xs, |x| *x).keys();
-        for k2 in Tuples::from(ys, |x| *x).keys();
+        for k1 in Tuples::of(xs, |x| *x).keys();
+        for k2 in Tuples::of(ys, |x| *x).keys();
         if k2 < k1;
         do vs.push((k1, k2));
     };
@@ -62,7 +62,7 @@ macro_rules! relationize_helper {
     // occurrences when we reach the bottom level.
     ($e:expr, ($($_:ty),*), ()) => { $e.len() };
     ($e:expr, ($($t1:ty),*), ($t:ty $(, $t2:ty)*)) => {
-        Ranges::from($e, projection!(($($t1),*), ($($t2),*)))
+        Ranges::of($e, projection!(($($t1),*), ($($t2),*)))
             .map(|xs| relationize_helper!(xs, ($($t1,)* $t), ($($t2),*)))
     };
 }
@@ -87,8 +87,8 @@ fn example2() {
     let r: &[(&str, usize)] = &[("a", 1), ("a", 2), ("b", 1), ("b", 2)];
     // ↓ GOAL 1: GENERATE THIS CODE ↓
     let mut r_ab =
-        Ranges::from(r, |t| t.0)
-        .map(|bs| Tuples::from(bs, |t| t.1).map(|_| ()));
+        Ranges::of(r, |t| t.0)
+        .map(|bs| Tuples::of(bs, |t| t.1).map(|_| ()));
     // ↑ GOAL 1: GENERATE THIS CODE ↑
 
     // Next goal is to generate this code:
@@ -114,11 +114,11 @@ fn example2() {
 
 //     // Triangle query into a sorted vector.
 //     let mut vs: Vec<(&str, usize, &str, i8)> = Vec::new();
-//     let rt = Ranges::from(rAB, |x| x.0).join(Ranges::from(tAC, |x| x.0));
+//     let rt = Ranges::of(rAB, |x| x.0).join(Ranges::of(tAC, |x| x.0));
 //     for (a, (rB, tC)) in rt.iter() {
-//         let rs = Tuples::from(rB, |x| x.1).join(Ranges::from(sBC, |x| x.0));
+//         let rs = Tuples::of(rB, |x| x.1).join(Ranges::of(sBC, |x| x.0));
 //         for (b, (r, sC)) in rs.iter() {
-//             let st = Tuples::from(sC, |x| x.1).join(Tuples::from(tC, |x| x.1));
+//             let st = Tuples::of(sC, |x| x.1).join(Tuples::of(tC, |x| x.1));
 //             for (c, (s, t)) in st.iter() {
 //                 vs.push((a, b, c, r.2 * s.2 * t.2))
 //             }
