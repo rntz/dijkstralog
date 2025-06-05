@@ -23,7 +23,6 @@ macro_rules! projection {
 
 macro_rules! relationize_helper {
     ($e:expr, ($($_:ty),*), ()) => { () };
-    ($e:expr, $_:tt, ()) => { panic!("VERY BAD, NO GOOD") };
     ($e:expr, ($($t1:ty),*), ($t:ty $(, $t2:ty)*)) => {
         SliceRange::new($e, projection!(($($t1),*), ($($t2),*)))
             .map(|xs| relationize_helper!(xs, ($($t1,)* $t), ($($t2),*)))
