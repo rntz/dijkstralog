@@ -1,6 +1,7 @@
-#![allow(dead_code, unused_imports, unused_variables, unused_mut)]
+#![allow(dead_code, unused_imports, unused_variables, unused_mut, unused_macros)]
 
 mod iter;
+mod temp;
 
 use iter::{
     Position,
@@ -176,6 +177,9 @@ fn example5() {
 }
 
 fn main() {
+    println!("\n---------- temp::main() ----------");
+    temp::main();
+
     println!("\n----- EXAMPLE 1 -----");
     example1();
 
