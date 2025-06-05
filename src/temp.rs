@@ -1,8 +1,8 @@
 use crate::iter;
 use crate::iter::{
     Seek,
-    Ranges,
-    Tuples,
+    ranges,
+    tuples,
 };
 
 pub fn main() {
@@ -38,8 +38,8 @@ fn example_macro2() {
 
     let mut vs: Vec<(&str, &str)> = Vec::new();
     nest! {
-        for k1 in Tuples::of(xs, |x| *x).keys();
-        for k2 in Tuples::of(ys, |x| *x).keys();
+        for k1 in tuples(xs, |x| *x).keys();
+        for k2 in tuples(ys, |x| *x).keys();
         if k2 < k1;
         do vs.push((k1, k2));
     };
@@ -62,7 +62,7 @@ macro_rules! relationize_helper {
     // occurrences when we reach the bottom level.
     ($e:expr, ($($_:ty),*), ()) => { $e.len() };
     ($e:expr, ($($t1:ty),*), ($t:ty $(, $t2:ty)*)) => {
-        Ranges::of($e, projection!(($($t1),*), ($($t2),*)))
+        iter::ranges($e, projection!(($($t1),*), ($($t2),*)))
             .map(|xs| relationize_helper!(xs, ($($t1,)* $t), ($($t2),*)))
     };
 }
@@ -87,8 +87,8 @@ fn example2() {
     let r: &[(&str, usize)] = &[("a", 1), ("a", 2), ("b", 1), ("b", 2)];
     // ↓ GOAL 1: GENERATE THIS CODE ↓
     let mut r_ab =
-        Ranges::of(r, |t| t.0)
-        .map(|bs| Tuples::of(bs, |t| t.1).map(|_| ()));
+        iter::ranges(r, |t| t.0)
+        .map(|bs| tuples(bs, |t| t.1).map(|_| ()));
     // ↑ GOAL 1: GENERATE THIS CODE ↑
 
     // Next goal is to generate this code:
@@ -114,11 +114,11 @@ fn example2() {
 
 //     // Triangle query into a sorted vector.
 //     let mut vs: Vec<(&str, usize, &str, i8)> = Vec::new();
-//     let rt = Ranges::of(rAB, |x| x.0).join(Ranges::of(tAC, |x| x.0));
+//     let rt = ranges(rAB, |x| x.0).join(ranges(tAC, |x| x.0));
 //     for (a, (rB, tC)) in rt.iter() {
-//         let rs = Tuples::of(rB, |x| x.1).join(Ranges::of(sBC, |x| x.0));
+//         let rs = tuples(rB, |x| x.1).join(ranges(sBC, |x| x.0));
 //         for (b, (r, sC)) in rs.iter() {
-//             let st = Tuples::of(sC, |x| x.1).join(Tuples::of(tC, |x| x.1));
+//             let st = tuples(sC, |x| x.1).join(tuples(tC, |x| x.1));
 //             for (c, (s, t)) in st.iter() {
 //                 vs.push((a, b, c, r.2 * s.2 * t.2))
 //             }

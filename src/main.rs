@@ -4,13 +4,10 @@ mod iter;
 mod temp;
 
 use iter::{
-    Position,
-    Position::{*},
-    Bound,
-    Bound::{*},
-    Ranges,
-    Tuples,
+    Position, Position::{*},
+    Bound, Bound::{*},
     Seek,
+    ranges, tuples,
 };
 
 // EXAMPLE 1: TRIES
@@ -18,7 +15,7 @@ fn example1() {
     let xys: &[(isize, &str)] = &[(1, "one"), (1, "wun"), (2, "two"), (2, "deux")];
 
     // Iterate through the slices on the first component of the tuples.
-    let mut it = Ranges::of(xys, |t| t.0);
+    let mut it = ranges(xys, |t| t.0);
     loop {
         let p = it.posn();
         println!("{p:?}");
@@ -33,8 +30,8 @@ fn example1() {
 
     // Dump it into a trie using nested iteration.
     let trie: Vec<(isize, Vec<&str>)> =
-        Ranges::of(xys, |t| t.0)
-        .map(|ys| Tuples::of(ys, |t| t.1).keys().collect())
+        ranges(xys, |t| t.0)
+        .map(|ys| tuples(ys, |t| t.1).keys().collect())
         .collect();
     println!("trie: {trie:?}");
 }
@@ -49,11 +46,11 @@ fn example2() {
     assert!(t.is_sorted());
 
     let mut r_ab =
-        Ranges::of(r, |t| t.0).map(|bs| Ranges::of(bs, |t| t.1).map(|_| 2));
+        ranges(r, |t| t.0).map(|bs| ranges(bs, |t| t.1).map(|_| 2));
     let mut s_bc =
-        Ranges::of(s, |t| t.0).map(|cs| Ranges::of(cs, |t| t.1).map(|_| 3));
+        ranges(s, |t| t.0).map(|cs| ranges(cs, |t| t.1).map(|_| 3));
     let mut t_ac =
-        Ranges::of(t, |t| t.0).map(|cs| Ranges::of(cs, |t| t.1).map(|_| 5));
+        ranges(t, |t| t.0).map(|cs| ranges(cs, |t| t.1).map(|_| 5));
 
     let rtrie: Vec<(_, Vec<_>)> = r_ab.clone().map(|bs| bs.collect()).collect();
     println!("rtrie: {rtrie:?}");
@@ -87,14 +84,14 @@ fn example3() {
 
     // Let's plan a triangle query!
     let triangle_it =
-        Ranges::of(rAB, |x| x.0)
-        .join(Ranges::of(tAC, |x| x.0))
+        ranges(rAB, |x| x.0)
+        .join(ranges(tAC, |x| x.0))
         .map(|(rB, tC)| {
-            Tuples::of(rB, |x| x.1)
-            .join(Ranges::of(sBC, |x| x.0))
+            tuples(rB, |x| x.1)
+            .join(ranges(sBC, |x| x.0))
             .map(|(r, sC)| {
-                Tuples::of(sC, |x| x.1)
-                .join(Tuples::of(tC, |x| x.1))
+                tuples(sC, |x| x.1)
+                .join(tuples(tC, |x| x.1))
                 .map(|(s, t)| r.2 * s.2 * t.2)
             })
         });
@@ -124,11 +121,11 @@ fn example4() {
 
     // Triangle query into a sorted vector.
     let mut vs: Vec<(&str, usize, &str, i8)> = Vec::new();
-    let rt = Ranges::of(rAB, |x| x.0).join(Ranges::of(tAC, |x| x.0));
+    let rt = ranges(rAB, |x| x.0).join(ranges(tAC, |x| x.0));
     for (a, (rB, tC)) in rt.iter() {
-        let rs = Tuples::of(rB, |x| x.1).join(Ranges::of(sBC, |x| x.0));
+        let rs = tuples(rB, |x| x.1).join(ranges(sBC, |x| x.0));
         for (b, (r, sC)) in rs.iter() {
-            let st = Tuples::of(sC, |x| x.1).join(Tuples::of(tC, |x| x.1));
+            let st = tuples(sC, |x| x.1).join(tuples(tC, |x| x.1));
             for (c, (s, t)) in st.iter() {
                 vs.push((a, b, c, r.2 * s.2 * t.2))
             }
@@ -143,7 +140,7 @@ fn example4() {
 #[allow(non_snake_case)]
 fn example5() {
     let xs: &[(isize, &str)] = &[(17, "hello"), (17, "goodbye"), (23, "hello"), (27, "goodbye")];
-    let xs_it = Ranges::of(xs, |x| x.0);
+    let xs_it = ranges(xs, |x| x.0);
     let point = xs_it.clone().lookup(17);
 
     let rAB: &[(&str,  usize, i8)] = &[("a", 1, 1), ("a", 2, 2), ("b", 1, 1), ("b", 2, 2)];
@@ -157,15 +154,15 @@ fn example5() {
     // Triangle query into a sorted vector.
     let mut vs: Vec<(&str, usize, &str, i8)> = Vec::new();
 
-    let r_ab = Ranges::of(rAB, |x| x.0);
-    let s_bc = Ranges::of(sBC, |x| x.0);
-    let t_axc = Ranges::of(tAXC, |x| x.0);
+    let r_ab = ranges(rAB, |x| x.0);
+    let s_bc = ranges(sBC, |x| x.0);
+    let t_axc = ranges(tAXC, |x| x.0);
     for (a, (rB, tXC)) in r_ab.join(t_axc).iter() {
-        let r_b = Tuples::of(rB, |x| x.1);
-        let t_c = match Ranges::of(tXC, |x| x.1).lookup(17)
-                  { Some(s) => Tuples::of(s, |x| x.2), None => continue, };
+        let r_b = tuples(rB, |x| x.1);
+        let t_c = match ranges(tXC, |x| x.1).lookup(17)
+                  { Some(s) => tuples(s, |x| x.2), None => continue, };
         for (b, (r, sC)) in r_b.join(s_bc.clone()).iter() {
-            let s_c = Tuples::of(sC, |x| x.1);
+            let s_c = tuples(sC, |x| x.1);
             for (c, (s, t)) in s_c.join(t_c.clone()).iter() {
                 vs.push((a, b, c, r.2 * s.2 * t.3))
             }
