@@ -1,8 +1,4 @@
-#![allow(dead_code, unused_imports, unused_variables, unused_mut, unused_macros)]
-
-// TODO: move this to examples/ directory, along with temp.rs
-
-mod temp;
+#![allow(unused_imports, unused_mut)]
 
 use dijkstralog::iter::{
     Position, Position::{*},
@@ -67,6 +63,7 @@ fn example2() {
             })
         });
 
+    #[allow(clippy::type_complexity)]
     let triangles: Vec<(&str, Vec<(isize, Vec<(&str, isize)>)>)> =
         triangle_it.map(|bcs| bcs.map(|cs| cs.collect()).collect())
         .collect();
@@ -140,10 +137,6 @@ fn example4() {
 // EXAMPLE 5: LOOKUPS
 #[allow(non_snake_case)]
 fn example5() {
-    let xs: &[(isize, &str)] = &[(17, "hello"), (17, "goodbye"), (23, "hello"), (27, "goodbye")];
-    let xs_it = ranges(xs, |x| x.0);
-    let point = xs_it.clone().lookup(17);
-
     let rAB: &[(&str,  usize, i8)] = &[("a", 1, 1), ("a", 2, 2), ("b", 1, 1), ("b", 2, 2)];
     let sBC: &[(usize, &str,  i8)] = &[(1, "one", 1), (1, "wun", 1), (2, "deux", 2), (2, "two", 2)];
     let tAXC: &[(&str,  i32, &str,  i8)] =
@@ -175,10 +168,7 @@ fn example5() {
 }
 
 fn main() {
-    println!("\n---------- temp::main() ----------");
-    temp::main();
-
-    println!("\n----- EXAMPLE 1 -----");
+    println!("----- EXAMPLE 1 -----");
     example1();
 
     println!("\n----- EXAMPLE 2 -----");

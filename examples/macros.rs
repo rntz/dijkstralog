@@ -1,4 +1,3 @@
-use dijkstralog::iter;
 use dijkstralog::iter::{
     Seek,
     ranges,
@@ -159,7 +158,7 @@ fn example_macro4() {
     // generates nested Seek-erators.
     let r_ab = seek! {
         for bs in ranges(rAB, |t| t.0);
-        for t  in tuples(bs,  |t| t.1);
+        for _t in tuples(bs,  |t| t.1);
         yield ()
     };
 
