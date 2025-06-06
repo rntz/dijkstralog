@@ -123,7 +123,7 @@ pub trait Seek {
     fn posn(&self) -> Position<Self::Key, Self::Value>;
     fn seek(&mut self, target: Bound<Self::Key>);
 
-    fn bound(&self) -> Bound<Self::Key> { return self.posn().to_bound() }
+    fn bound(&self) -> Bound<Self::Key> { self.posn().to_bound() }
 
     fn map<V, F>(self, func: F) -> Map<Self, F>
     where Self: Sized, F: Fn(Self::Value) -> V
@@ -292,7 +292,7 @@ pub struct Ranges<'a, X, F> {
     get_key: F,
 }
 
-impl<'a, X, F> std::fmt::Debug for Ranges<'a, X, F> {
+impl<X, F> std::fmt::Debug for Ranges<'_, X, F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_struct("Ranges")
             .field("index_lo", &self.index_lo)
