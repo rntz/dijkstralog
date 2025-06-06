@@ -1,9 +1,10 @@
 #![allow(dead_code, unused_imports, unused_variables, unused_mut, unused_macros)]
 
-mod iter;
+// TODO: move this to examples/ directory, along with temp.rs
+
 mod temp;
 
-use iter::{
+use dijkstralog::iter::{
     Position, Position::{*},
     Bound, Bound::{*},
     Seek,

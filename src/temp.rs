@@ -1,5 +1,5 @@
-use crate::iter;
-use crate::iter::{
+use dijkstralog::iter;
+use dijkstralog::iter::{
     Seek,
     ranges,
     tuples,

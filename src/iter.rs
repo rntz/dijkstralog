@@ -61,25 +61,25 @@ impl<K: Ord, V> Position<K,V> {
     }
 }
 
-impl<K: Ord + Copy, V> Position<K, V> {
-    pub fn bound(&self) -> Bound<K> {
-        match *self {
-            Have(k, _) => Atleast(k),
-            Know(p)    => p,
-        }
-    }
+// impl<K: Ord + Copy, V> Position<K, V> {
+//     pub fn bound(&self) -> Bound<K> {
+//         match *self {
+//             Have(k, _) => Atleast(k),
+//             Know(p)    => p,
+//         }
+//     }
 
-    // pub fn outer_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, Outer<V, U>> {
-    //     match self.bound().cmp(&other.bound()) {
-    //         Ordering::Less    => self.map(|v| Left(v)),
-    //         Ordering::Greater => other.map(|v| Right(v)),
-    //         Ordering::Equal   => match (self, other) {
-    //             (Have(k, x), Have(_, y))    => Have(k, Both(x,y)),
-    //             (Know(p), _) | (_, Know(p)) => Know(p),
-    //         }
-    //     }
-    // }
-}
+//     pub fn outer_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, Outer<V, U>> {
+//         match self.bound().cmp(&other.bound()) {
+//             Ordering::Less    => self.map(|v| Left(v)),
+//             Ordering::Greater => other.map(|v| Right(v)),
+//             Ordering::Equal   => match (self, other) {
+//                 (Have(k, x), Have(_, y))    => Have(k, Both(x,y)),
+//                 (Know(p), _) | (_, Know(p)) => Know(p),
+//             }
+//         }
+//     }
+// }
 
 impl<K, V> Position<K, V> {
     pub fn map<U, F: FnOnce(V) -> U>(self, f: F) -> Position<K, U> {
@@ -145,12 +145,12 @@ pub trait Seek {
     // where Self: Sized, U: Seek<Key=Self::Key>
     // { OuterJoin(self, other) }
 
-    fn collect<B>(mut self) -> B
+    fn collect<B>(self) -> B
     where Self: Sized, B: FromIterator<(Self::Key, Self::Value)>
     { self.iter().collect() }
 
-    fn keys(mut self) -> impl Iterator<Item = Self::Key> where Self: Sized
-    { self.iter().map(|(k,v)| k) }
+    fn keys(self) -> impl Iterator<Item = Self::Key> where Self: Sized
+    { self.iter().map(|(k,_v)| k) }
 
     // fn values(mut self) -> impl Iterator<Item = Self::Value> where Self: Sized
     // { self.iter().map(|(k,v)| v) }
