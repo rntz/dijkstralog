@@ -6,46 +6,20 @@ use crate::iter::{
 };
 
 pub fn main() {
-    println!("===== EXAMPLE MACRO 2 =====");
+    println!("===== EXAMPLE MACRO =====");
+    example_macro();
+
+    println!("\n===== EXAMPLE MACRO 2 =====");
     example_macro2();
 
-    println!("\n===== EXAMPLE MACRO =====");
-    example_macro();
+    println!("\n===== EXAMPLE MACRO 3 =====");
+    example_macro3();
 
     println!("\n===== EXAMPLE 2 =====");
     example2();
 }
 
-// a little nested loop language
-macro_rules! nest {
-    {} => {};
-
-    { do $s:stmt; $($rest:tt)* }
-    => { $s nest!($($rest)*) };
-
-    { for $p:pat in $e:expr; $($rest:tt)* }
-    => { for $p in $e { nest!($($rest)*); } };
-
-    { if $e:expr; $($rest:tt)* }
-    => { if !$e { continue; }; nest!($($rest)*) }
-}
-
-fn example_macro2() {
-    let xs: &[&str] = &["johnny", "ursula"];
-    let ys: &[&str] = &["bg", "kl"];
-    assert!(xs.is_sorted());
-    assert!(ys.is_sorted());
-
-    let mut vs: Vec<(&str, &str)> = Vec::new();
-    nest! {
-        for k1 in tuples(xs, |x| *x).keys();
-        for k2 in tuples(ys, |x| *x).keys();
-        if k2 < k1;
-        do vs.push((k1, k2));
-    };
-    println!("vs: {vs:?}");
-}
-
+
 // ---------- GOAL 1: MACRO turning a LIST OF TUPLES into NESTED ITERATORS ----------
 macro_rules! underscore { ($t:ty) => { _ } }
 // projection!((), ())     => |(x,)|    x
@@ -98,6 +72,64 @@ fn example2() {
             vs.push((a, b));
         }
     }
+    println!("vs: {vs:?}");
+}
+
+
+// a little nested loop language
+macro_rules! nest {
+    {} => {};
+
+    { do $s:stmt; $($rest:tt)* }
+    => { $s nest!($($rest)*) };
+
+    { for $p:pat in $e:expr; $($rest:tt)* }
+    => { for $p in $e { nest!($($rest)*); } };
+
+    { if let $p:pat = $e:expr; $($rest:tt)* }
+    => { if let $p = $e { nest!($($rest)*); } };
+
+    { if $e:expr; $($rest:tt)* }
+    => { if $e { nest!($($rest)*); } };
+}
+
+fn example_macro2() {
+    let xs: &[&str] = &["johnny", "ursula"];
+    let ys: &[&str] = &["bg", "kl"];
+    assert!(xs.is_sorted());
+    assert!(ys.is_sorted());
+
+    let mut vs: Vec<(&str, &str)> = Vec::new();
+    nest! {
+        for k1 in tuples(xs, |x| *x).keys();
+        for k2 in tuples(ys, |x| *x).keys();
+        if k2 < k1;
+        do vs.push((k1, k2));
+    };
+    println!("vs: {vs:?}");
+}
+
+// combining nest! with relationize!
+#[allow(non_snake_case)]
+fn example_macro3() {
+    let rAB: &[(&str, usize)] = &[("a", 1), ("a", 2), ("b", 1), ("b", 2)];
+    let sBC: &[(usize, &str)] = &[(1, "one"), (1, "wun"), (2, "deux"), (2, "two")];
+    let tAXC: &[(&str, i32, &str)] = &[("a", 17, "one"), ("b", 17, "deux"), ("mary", 23, "mary")];
+
+    let r_ab  = relationize!(rAB, &str, usize);
+    let s_bc  = relationize!(sBC,       usize,      &str);
+    let t_axc = relationize!(tAXC, &str,       i32, &str);
+
+    // Unfortunately we still need clone()s in (somewhat) unpredictable places.
+    // Is there a way to automate this?
+    let mut vs = Vec::<(&str, usize, &str, usize)>::new();
+    nest! {
+        for (a, (r_b, t_xc)) in r_ab.join(t_axc).iter();
+        if let Some(t_c)     =  t_xc.lookup(17);
+        for (b, (r, s_c))    in r_b.join(s_bc.clone()).iter();
+        for (c, (s, t))      in s_c.join(t_c.clone()).iter();
+        do vs.push((a, b, c, r * s * t));
+    };
     println!("vs: {vs:?}");
 }
 
