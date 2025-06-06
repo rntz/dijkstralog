@@ -17,9 +17,6 @@ pub fn main() {
 
     println!("\n===== EXAMPLE MACRO 4 =====");
     example_macro4();
-
-    println!("\n===== EXAMPLE 2 =====");
-    example2();
 }
 
 
@@ -60,32 +57,9 @@ fn example_macro() {
     println!("vs: {vs:?}");
 }
 
-fn example2() {
-    let r: &[(&str, usize)] = &[("a", 1), ("a", 2), ("b", 1), ("b", 2)];
-    // ↓ GOAL 1: GENERATE THIS CODE ↓
-    let mut r_ab =
-        iter::ranges(r, |t| t.0)
-        .map(|bs| tuples(bs, |t| t.1).map(|_| ()));
-    // ↑ GOAL 1: GENERATE THIS CODE ↑
-
-    // Next goal is to generate this code:
-    let mut vs = Vec::new();
-    for (a, r_b) in r_ab.iter() {
-        for (b, ()) in r_b.iter() {
-            vs.push((a, b));
-        }
-    }
-    println!("vs: {vs:?}");
-}
-
 
 // a little nested loop language
 macro_rules! nest {
-    {} => {};
-
-    { do $s:stmt; $($rest:tt)* }
-    => { $s nest!($($rest)*) };
-
     { for $p:pat in $e:expr; $($rest:tt)* }
     => { for $p in $e { nest!($($rest)*); } };
 
@@ -95,11 +69,13 @@ macro_rules! nest {
     { if $e:expr; $($rest:tt)* }
     => { if $e { nest!($($rest)*); } };
 
-    { $b:block } => { $b };
+    // THE ABOVE MUST COME BEFORE THE BELOW, because statements overlap with our
+    // syntax considerably and we want to prioritize our own syntax over
+    // statement syntax.
 
+    { $s:stmt; $($rest:tt)* } => { $s nest!($($rest)*) };
     { $s:stmt } => { $s };
-    { $s:stmt; } => { $s };
-    { $s:stmt; $($rest:tt)* } => { $s nest!($($rest)*) }
+    {} => {};
 }
 
 fn example_macro2() {
@@ -113,7 +89,7 @@ fn example_macro2() {
         for k1 in tuples(xs, |x| *x).keys();
         for k2 in tuples(ys, |x| *x).keys();
         if k2 < k1;
-        vs.push((k1, k2))
+        vs.push((k1, k2));
     };
     println!("vs: {vs:?}");
 }
@@ -137,51 +113,52 @@ fn example_macro3() {
         if let Some(t_c)     =  t_xc.lookup(17);
         for (b, (r, s_c))    in r_b.join(s_bc.clone()).iter();
         for (c, (s, t))      in s_c.join(t_c.clone()).iter();
-        do vs.push((a, b, c, r * s * t));
+        vs.push((a, b, c, r * s * t));
     };
     println!("vs: {vs:?}");
-
-    // // mock-up of how seek! should look
-    // let result = seek! {
-    //     for (r_b, t_xc) in r_ab.join(t_axc);
-    //     if let Some(t_c) = t_xc.lookup(17);
-    //     for (r, s_c) in r_b.join(s_bc.clone());
-    //     for (c, (s, t)) in s_c.join(t_c.clone());
-    //     yield r * s * t
-    // };
 }
 
 
+// Language for producing nested Seeks. Smells graded-monadic. I should re-read
+// "Relational Algebra by Way of Adjunctions".
+//
+// Handling statements here is complicated mainly because of seek_map, which
+// needs to "skip over" all statements and find the next loop operator (yield,
+// for, or if let) to figure out whether to call .map() or .filter_map().
 macro_rules! seek {
     { yield $e:expr } => { $e };
-    { for $p:pat in $e:expr; $($rest:tt)* } => { seek_helper!(direct, $e, $p, $($rest)*) }
+    { for $p:pat in $e:expr; $($rest:tt)* } => { seek_map!($p, $e, $($rest)*) };
+    // If we see an "if let", we have no choice but to generate an Option.
+    // This is `fine': Options are still Seek-able if their contents are.
+    { if let $p:pat = $e:expr; $($rest:tt)* }
+    => { seek_filter!(if let $p = $e; $($rest)*) };
 }
 
-macro_rules! seek_helper {
-    {direct, $seeker:expr, $p:pat, yield $e:expr} => { $seeker.map(|$p| $e) };
-    {direct, $seeker:expr, $p:pat, for $p2:pat in $e:expr; $($rest:tt)*}
-    => { $seeker.map(|$p| seek_helper!(direct, $e, $p2, $($rest)*)) };
-    {direct, $seeker:expr, $p:pat, if let $p2:pat = $e:expr; $($rest:tt)*}
-    => { $seeker.filter_map(|$p| if let $p2 = $e { seek_helper!(filter, $($rest)*) }
-                                 else { None }) };
+macro_rules! seek_map {
+    {$p:pat, $e:expr, yield $e2:expr} => { $e.map(|$p| $e2) };
+    {$p:pat, $e:expr, for $p2:pat in $e2:expr; $($rest:tt)*}
+    => { $e.map(|$p| seek_map!($p2, $e2, $($rest)*)) };
+    {$p:pat, $e:expr, if let $p2:pat = $e2:expr; $($rest:tt)*}
+    => { $e.filter_map(|$p| seek_filter!(if let $p2 = $e2; $($rest)*)) };
+}
 
-    {filter, yield $e:expr} => { Some($e) };
-    {filter, for $p:pat in $e:expr; $($rest:tt)*}
-    => { Some(seek_helper!(direct, $e, $p, $($rest)*)) };
-    {filter, if let $p:pat = $e:expr; $($rest:tt)*}
-    => { if let $p = $e { seek_helper!(filter, $($rest)*) } else { None } };
+macro_rules! seek_filter {
+    { yield $e:expr } => { Some($e) };
+    { for $p:pat in $e:expr; $($rest:tt)* } => { Some(seek_map!($p, $e, $($rest)*)) };
+    { if let $p:pat = $e:expr; $($rest:tt)* }
+    => { if let $p = $e { seek_filter!($($rest)*) } else { None } };
 }
 
 #[allow(non_snake_case)]
 fn example_macro4() {
     let rAB: &[(&str, usize)] = &[("a", 1), ("a", 2), ("b", 1), ("b", 2)];
-    let sBC: &[(usize, &str)] = &[(1, "one"), (1, "wun"), (2, "deux"), (2, "two")];
-    let tAXC: &[(&str, i32, &str)] = &[("a", 17, "one"), ("b", 17, "deux"), ("mary", 23, "mary")];
+    // let sBC: &[(usize, &str)] = &[(1, "one"), (1, "wun"), (2, "deux"), (2, "two")];
+    // let tAXC: &[(&str, i32, &str)] = &[("a", 17, "one"), ("b", 17, "deux"), ("mary", 23, "mary")];
 
-    // generates nested Seek-erators
+    // generates nested Seek-erators.
     let r_ab = seek! {
         for bs in ranges(rAB, |t| t.0);
-        for cs in tuples(bs, |t| t.1);
+        for t  in tuples(bs,  |t| t.1);
         yield ()
     };
 
@@ -190,7 +167,7 @@ fn example_macro4() {
     nest! {
         for (a, r_b) in r_ab.iter();
         for (b, ())  in r_b.iter();
-        do vs.push((a, b));
+        vs.push((a, b));
     };
     println!("vs: {vs:?}");
 }
