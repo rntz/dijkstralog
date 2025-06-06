@@ -36,7 +36,7 @@ macro_rules! relationize_helper {
     // occurrences when we reach the bottom level.
     ($e:expr, ($($_:ty),*), ()) => { $e.len() };
     ($e:expr, ($($t1:ty),*), ($t:ty $(, $t2:ty)*)) => {
-        iter::ranges($e, projection!(($($t1),*), ($($t2),*)))
+        ranges($e, projection!(($($t1),*), ($($t2),*)))
             .map(|xs| relationize_helper!(xs, ($($t1,)* $t), ($($t2),*)))
     };
 }
@@ -86,8 +86,9 @@ fn example_macro2() {
 
     let mut vs: Vec<(&str, &str)> = Vec::new();
     nest! {
-        for k1 in tuples(xs, |x| *x).keys();
-        for k2 in tuples(ys, |x| *x).keys();
+        for k1 in xs; for k2 in ys;
+        // for k1 in tuples(xs, |x| *x).keys();
+        // for k2 in tuples(ys, |x| *x).keys();
         if k2 < k1;
         vs.push((k1, k2));
     };
@@ -152,8 +153,8 @@ macro_rules! seek_filter {
 #[allow(non_snake_case)]
 fn example_macro4() {
     let rAB: &[(&str, usize)] = &[("a", 1), ("a", 2), ("b", 1), ("b", 2)];
-    // let sBC: &[(usize, &str)] = &[(1, "one"), (1, "wun"), (2, "deux"), (2, "two")];
-    // let tAXC: &[(&str, i32, &str)] = &[("a", 17, "one"), ("b", 17, "deux"), ("mary", 23, "mary")];
+    let sBC: &[(usize, &str)] = &[(1, "one"), (1, "wun"), (2, "deux"), (2, "two")];
+    let tAXC: &[(&str, i32, &str)] = &[("a", 17, "one"), ("b", 17, "deux"), ("mary", 23, "mary")];
 
     // generates nested Seek-erators.
     let r_ab = seek! {
@@ -170,6 +171,36 @@ fn example_macro4() {
         vs.push((a, b));
     };
     println!("vs: {vs:?}");
+
+    // Let's try a triangle join, expressed without relationizing first.
+    // Problem: this isn't sharing work as much as it could - we re-compute
+    // ranges(sBC) within an inner loop instead of doing it once and clone()ing.
+    let triangle_iter = seek! {
+        for (r_b, t_xc) in ranges(rAB, |t| t.0).join(ranges(tAXC, |t| t.0));
+        if let Some(t_c) = ranges(t_xc, |t| t.1).lookup(17);
+        for (_r, s_c) in tuples(r_b, |t| t.1).join(ranges(sBC, |t| t.0));
+        for (_s, _t) in tuples(s_c, |t| t.1).join(tuples(t_c, |t| t.2));
+        yield ()
+    };
+    let mut triangles = Vec::new();
+    nest! {
+        for (a, bcs) in triangle_iter.iter();
+        for (b,  cs) in bcs.iter();
+        for (c,  ()) in cs.iter();
+        triangles.push((a,b,c));
+    };
+    println!("triangles: {triangles:?}");
+
+    // All the way to a vector in one block.
+    let mut triangles = Vec::new();
+    nest! {
+        for (a, (rb, txc)) in ranges(rAB, |t| t.0).join(ranges(tAXC, |t| t.0)).iter();
+        if let Some(tc) = ranges(txc, |t| t.1).lookup(17);
+        for (b, (_r, sc)) in tuples(rb, |t| t.1).join(ranges(sBC, |t| t.0)).iter();
+        for (c, (_s, _t)) in tuples(sc, |t| t.1).join(tuples(tc, |t| t.2)).iter();
+        triangles.push((a,b,c))
+    }
+    println!("triangles: {triangles:?}");
 }
 
 
