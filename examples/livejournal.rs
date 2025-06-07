@@ -1,5 +1,9 @@
 #![allow(unused_imports, unused_variables)]
 
+// Use the SNAP soc-LiveJournal1.txt data set:
+// https://snap.stanford.edu/data/soc-LiveJournal1.html
+// https://snap.stanford.edu/data/soc-LiveJournal1.txt.gz
+
 use dijkstralog::iter;
 use dijkstralog::iter::{Seek, ranges, tuples};
 
