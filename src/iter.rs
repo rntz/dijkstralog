@@ -404,6 +404,87 @@ impl<V, S: Seek, F: Fn(S::Value) -> Option<V>> Seek for FilterMap<S, F> {
 // }
 
 
+// ---------- FUNCTION QUERIES ----------
+pub struct PartialFn<K, F> { bound: Bound<K>, func: F }
+pub struct TotalFn<K, F> { bound: Bound<K>, func: F }
+
+impl<K: Ord + Copy, V, F: Fn(K) -> V> TotalFn<K, F> {
+    pub fn new(func: F) -> Self { TotalFn { bound: Init, func } }
+}
+impl<K: Ord + Copy, V, F: Fn(K) -> V> Seek for TotalFn<K, F> {
+    type Key = K;
+    type Value = V;
+    fn seek(&mut self, bound: Bound<K>) { self.bound = bound; }
+    fn posn(&self) -> Position<K, V> {
+        match self.bound {
+            Atleast(k) => Have(k, (self.func)(k)),
+            p => Know(p),
+        }
+    }
+}
+
+impl<K: Ord + Copy, V, F: Fn(K) -> Option<V>> PartialFn<K, F> {
+    pub fn new(func: F) -> Self { PartialFn { bound: Init, func } }
+}
+impl<K: Ord + Copy, V, F: Fn(K) -> Option<V>> Seek for PartialFn<K, F> {
+    type Key = K;
+    type Value = V;
+    fn seek(&mut self, bound: Bound<K>) { self.bound = bound; }
+    fn posn(&self) -> Position<K, V> {
+        match self.bound {
+            Atleast(k) => match (self.func)(k) {
+                None => Know(Greater(k)),
+                Some(v) => Have(k, v),
+            },
+            p => Know(p),
+        }
+    }
+}
+
+
+// ---------- RANGE QUERIES ----------
+pub fn query_le<K: Ord + Copy>() -> impl Seek<Key = K, Value = impl Seek<Key = K, Value = ()>>
+{ TotalFn::new(Atleast) }
+
+pub fn query_eq<K: Ord + Copy>() -> impl Seek<Key = K, Value = impl Seek<Key = K, Value = ()>>
+{ TotalFn::new(|k| Singleton::new(k, ())) }
+
+pub struct Singleton<K, V>(Option<(K,V)>);
+impl<K, V> Singleton<K, V> {
+    pub fn new(k: K, v: V) -> Singleton<K, V> { Singleton(Some((k,v))) }
+}
+
+impl<K: Ord + Copy, V: Clone> Seek for Singleton<K, V> {
+    type Key = K;
+    type Value = V;
+    fn posn(&self) -> Position<K, V> {
+        match &self.0 {
+            None => Know(Done),
+            Some((k, v)) => Have(*k, v.clone()),
+        }
+    }
+    fn seek(&mut self, bound: Bound<K>) {
+        self.0 = match self.0.take() {
+            Some((k,v)) if bound.matches(k) => Some((k,v)),
+            _ => None,
+        }
+    }
+}
+
+// Find things satisfying some lower bound.
+impl<K: Ord + Copy> Seek for Bound<K> {
+    type Key = K;
+    type Value = ();
+    fn seek(&mut self, bound: Bound<K>) { *self = (*self).max(bound); }
+    fn posn(&self) -> Position<K, ()> {
+        match self {
+            Atleast(k) => Have(*k, ()),
+            p => Know(*p),
+        }
+    }
+}
+
+
 // ---------- INNER JOIN ----------
 //
 // TODO: n-ary joins using a macro to generate the code. Look at Datafrog for inspo:
