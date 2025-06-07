@@ -7,7 +7,7 @@ pub enum Bound<K> {
     Greater(K),
     Done,
 }
-use Bound::*;
+pub use Bound::*;
 
 // this could be extended to handle K: PartialOrd but we don't need it
 impl<K: Ord> PartialOrd for Bound<K> {
