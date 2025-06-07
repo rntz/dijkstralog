@@ -149,7 +149,7 @@ fn main() {
         // could leave this unmaterialized and just use `fwd.outer_join(rev)`, but this
         // roughly doubles total execution time for me. So we're using space to save time.
         println!("Creating symmetric edge index...");
-        let vab: Vec<(u32, u32)> = fwd
+        let unique_edges: Vec<(u32, u32)> = fwd
             .outer_join(rev)
             .iter()
             .flat_map(|(a, bs)| bs.keys().map(move |b| (a,b)))
@@ -157,7 +157,7 @@ fn main() {
         println!("done.");
 
         // Now, acyclic triangle query over this undirected edge trie.
-        let rab = ranges(&vab, |t| t.0).map(|ts| tuples(ts, |t| t.1));
+        let rab = ranges(&unique_edges, |t| t.0).map(|ts| tuples(ts, |t| t.1));
         let sbc = rab.clone();
         let tac = rab.clone();
         let mut found: usize = 0;
