@@ -123,7 +123,7 @@ fn main() {
     // over-counting edges by considering only those from lower- to strictly
     // higher-numbered nodes. This also excludes self-edges, enforcing
     // distinctness.
-    if false {
+    if true {
         println!("Undirected triangle query, Datalog-ish approach.");
 
         // estimate capacity by guessing that b < a will rule out ~1/2 the edges
@@ -243,7 +243,7 @@ fn main() {
 
     // Hand-optimized version. Still uses `ranges`, though; I could do with optimizing
     // that out.
-    if true {
+    if false {
         println!("Hand-coded undirected triangles.");
 
         let mut rev_edges: Vec<(u32, u32)> = edges
