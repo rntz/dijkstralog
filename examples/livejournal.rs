@@ -125,12 +125,10 @@ fn main() {
     if true {
         // estimate capacity by guessing that b < a will rule out ~1/2 the edges
         println!("Creating reverse index...");
-        let mut rev_edges: Vec<(u32, u32)> = Vec::with_capacity(edges.len() / 2);
-        for &(a, b) in edges {
-            if b < a {
-                rev_edges.push((b,a));
-            }
-        }
+        let mut rev_edges: Vec<(u32, u32)> = edges
+            .iter()
+            .filter_map(|&(a, b)| if b < a { Some((b, a)) } else { None })
+            .collect();
         let n_rev_edges = rev_edges.len();
         println!("Sorting reverse index of {n_rev_edges} edges...");
         rev_edges.sort();
@@ -147,15 +145,68 @@ fn main() {
             bs
         });
 
-        // Undirected edge iterator that only allows edges from lower → higher.
-        let rab = fwd.outer_join(rev);
+        // Materialize a symmetrized edge index that has all edges lower → higher. We
+        // could leave this unmaterialized and just use `fwd.outer_join(rev)`, but this
+        // roughly doubles total execution time for me. So we're using space to save time.
+        println!("Creating symmetric edge index...");
+        let vab: Vec<(u32, u32)> = fwd
+            .outer_join(rev)
+            .iter()
+            .flat_map(|(a, bs)| bs.keys().map(move |b| (a,b)))
+            .collect();
+        println!("done.");
 
         // Now, acyclic triangle query over this undirected edge trie.
+        let rab = ranges(&vab, |t| t.0).map(|ts| tuples(ts, |t| t.1));
         let sbc = rab.clone();
         let tac = rab.clone();
         let mut found: usize = 0;
         for (a, (rb, tc)) in rab.join(tac).iter() {
             for (b, (r, sc)) in rb.join(sbc.clone()).iter() {
+                for (c, (s, t)) in sc.join(tc.clone()).iter() {
+                    found += 1;
+                    if found % 1_000_000 == 0 {
+                        let millions = found / 1_000_000;
+                        println!("found {millions} million triangles");
+                    }
+                }
+            }
+        }
+
+        println!("FOUND THEM ALL");
+        dbg!(found);
+    }
+
+    // A simpler (in Rust) version of the above: we jump directly to the ordered
+    // symmetrized edge index by directing all edges low → high in one scan over
+    // the edge list, then sorting.
+    //
+    // However, this takes _slightly_ longer than the above, I think because it's doing
+    // more sorting work. In the above, we only sort `rev_edges`, while the outer join
+    // between fwd and rev is a fast sorted-list merge. Here we sort the entirety of
+    // `unique_edges`, roughly twice as much data; we're failing to take advantage of
+    // `edges` being pre-sorted.
+    if false {
+        // QUESTION: This pre-indexing step is natural and simple, but how do I
+        // express it to a Datalog engine built on worst-case optimal joins? It
+        // does not proceed in variable-at-a-time fashion, and the only reason
+        // it doesn't produce duplicates is the strictness of the order
+        // comparison.
+        let mut unique_edges: Vec<(u32, u32)> = Vec::with_capacity(edges.len());
+        for &(a, b) in edges {
+            if a == b { continue }
+            unique_edges.push(if a < b { (a, b) } else { (b, a) })
+        }
+        let n_edges = unique_edges.len();
+        println!("Materialized list of {n_edges} symmetric non-self edges, sorting...");
+        unique_edges.sort();
+        println!("Sorted.");
+
+        // Now we just do a regular triangle query over unique_edges.
+        let iter = ranges(&unique_edges, |t| t.0).map(|ts| tuples(ts, |t| t.1));
+        let mut found: usize = 0;
+        for (a, (rb, tc)) in iter.clone().join(iter.clone()).iter() {
+            for (b, (r, sc)) in rb.join(iter.clone()).iter() {
                 for (c, (s, t)) in sc.join(tc.clone()).iter() {
                     found += 1;
                     if found % 1_000_000 == 0 {
