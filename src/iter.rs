@@ -61,25 +61,25 @@ impl<K: Ord, V> Position<K,V> {
     }
 }
 
-// impl<K: Ord + Copy, V> Position<K, V> {
-//     pub fn bound(&self) -> Bound<K> {
-//         match *self {
-//             Have(k, _) => Atleast(k),
-//             Know(p)    => p,
-//         }
-//     }
+impl<K: Ord + Copy, V> Position<K, V> {
+    pub fn bound(&self) -> Bound<K> {
+        match *self {
+            Have(k, _) => Atleast(k),
+            Know(p)    => p,
+        }
+    }
 
-//     pub fn outer_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, Outer<V, U>> {
-//         match self.bound().cmp(&other.bound()) {
-//             Ordering::Less    => self.map(|v| Left(v)),
-//             Ordering::Greater => other.map(|v| Right(v)),
-//             Ordering::Equal   => match (self, other) {
-//                 (Have(k, x), Have(_, y))    => Have(k, Both(x,y)),
-//                 (Know(p), _) | (_, Know(p)) => Know(p),
-//             }
-//         }
-//     }
-// }
+    pub fn outer_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, Outer<V, U>> {
+        match self.bound().cmp(&other.bound()) {
+            Ordering::Less    => self.map(|v| Left(v)),
+            Ordering::Greater => other.map(|v| Right(v)),
+            Ordering::Equal   => match (self, other) {
+                (Have(k, x), Have(_, y))    => Have(k, Both(x,y)),
+                (Know(p), _) | (_, Know(p)) => Know(p),
+            }
+        }
+    }
+}
 
 impl<K, V> Position<K, V> {
     pub fn map<U, F: FnOnce(V) -> U>(self, f: F) -> Position<K, U> {
@@ -141,9 +141,9 @@ pub trait Seek {
     where Self: Sized, U: Seek<Key=Self::Key>
     { Join(self, other) }
 
-    // fn outer_join<U>(self, other: U) -> OuterJoin<Self, U>
-    // where Self: Sized, U: Seek<Key=Self::Key>
-    // { OuterJoin(self, other) }
+    fn outer_join<U>(self, other: U) -> OuterJoin<Self, U>
+    where Self: Sized, U: Seek<Key=Self::Key>
+    { OuterJoin(self, other) }
 
     fn collect<B>(self) -> B
     where Self: Sized, B: FromIterator<(Self::Key, Self::Value)>
@@ -426,44 +426,46 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
 
 
 
-// // ---------- OUTER JOIN ----------
-// pub struct OuterJoin<X,Y>(pub X, pub Y);
+// ---------- OUTER JOIN ----------
+#[derive(Debug, Copy, Clone)]
+pub struct OuterJoin<X,Y>(pub X, pub Y);
 
-// pub enum Outer<A, B> { Both(A,B), Left(A), Right(B), }
-// use Outer::*;
+#[derive(Debug, Copy, Clone)]
+pub enum Outer<A, B> { Both(A,B), Left(A), Right(B), }
+use Outer::*;
 
-// impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterJoin<X,Y> {
-//     type Key   = X::Key;
-//     type Value = Outer<X::Value, Y::Value>;
+impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterJoin<X,Y> {
+    type Key   = X::Key;
+    type Value = Outer<X::Value, Y::Value>;
 
-//     fn posn(&self) -> Position<X::Key, Outer<X::Value, Y::Value>> {
-//         return self.0.posn().outer_join(self.1.posn())
-//     }
+    fn posn(&self) -> Position<X::Key, Outer<X::Value, Y::Value>> {
+        return self.0.posn().outer_join(self.1.posn())
+    }
 
-//     fn seek(&mut self, target: Bound<X::Key>) {
-//         self.0.seek(target);
-//         self.1.seek(target);
-//     }
-// }
+    fn seek(&mut self, target: Bound<X::Key>) {
+        self.0.seek(target);
+        self.1.seek(target);
+    }
+}
 
-// // // Outers can also be outer joined.
-// // impl<X: Seek, Y:Seek<Key=X::Key>> Seek for Outer<X,Y> {
-// //     type Key   = X::Key;
-// //     type Value = Outer<X::Value, Y::Value>;
+// The results of an outer join can be iterated over as an outer join.
+impl<X: Seek, Y:Seek<Key=X::Key>> Seek for Outer<X,Y> {
+    type Key   = X::Key;
+    type Value = Outer<X::Value, Y::Value>;
 
-// //     fn posn(&self) -> Position<X::Key, Outer<X::Value, Y::Value>> {
-// //         match self {
-// //             Left(xs)    => xs.posn().map(|x| Left(x)),
-// //             Right(ys)   => ys.posn().map(|y| Right(y)),
-// //             Both(xs,ys) => xs.posn().outer_join(ys.posn()),
-// //         }
-// //     }
+    fn posn(&self) -> Position<X::Key, Outer<X::Value, Y::Value>> {
+        match self {
+            Left(xs)    => xs.posn().map(|x| Left(x)),
+            Right(ys)   => ys.posn().map(|y| Right(y)),
+            Both(xs,ys) => xs.posn().outer_join(ys.posn()),
+        }
+    }
 
-// //     fn seek(&mut self, target: Bound<X::Key>) {
-// //         match self {
-// //             Left(xs)  =>   xs.seek(target),
-// //             Right(ys) =>   ys.seek(target),
-// //             Both(xs,ys) => { xs.seek(target); ys.seek(target); }
-// //         }
-// //     }
-// // }
+    fn seek(&mut self, target: Bound<X::Key>) {
+        match self {
+            Left(xs)  =>   xs.seek(target),
+            Right(ys) =>   ys.seek(target),
+            Both(xs,ys) => { xs.seek(target); ys.seek(target); }
+        }
+    }
+}
