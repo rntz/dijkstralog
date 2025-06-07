@@ -30,7 +30,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 // total edges in soc-LiveJournal1.txt: 68,993,773
-// const MAX_EDGES: usize = 10_000_000;
+//const MAX_EDGES: usize = 10_000_000;
 const MAX_EDGES: usize = 100_000_000;
 
 fn main() {
@@ -92,6 +92,7 @@ fn main() {
     // Finally, since there are self-edges, the nodes (a,b,c) we find may not be
     // distinct.
     if false {
+        println!("Directed triangle query, edge(A,B) edge(B,C) edge(A,C).");
         let rab = ranges(edges, |t| t.0).map(|ts| tuples(ts, |t| t.1));
         let sbc = rab.clone();
         let tac = rab.clone();
@@ -122,7 +123,9 @@ fn main() {
     // over-counting edges by considering only those from lower- to strictly
     // higher-numbered nodes. This also excludes self-edges, enforcing
     // distinctness.
-    if true {
+    if false {
+        println!("Undirected triangle query, Datalog-ish approach.");
+
         // estimate capacity by guessing that b < a will rule out ~1/2 the edges
         println!("Creating reverse index...");
         let mut rev_edges: Vec<(u32, u32)> = edges
@@ -157,13 +160,11 @@ fn main() {
         println!("done.");
 
         // Now, acyclic triangle query over this undirected edge trie.
-        let rab = ranges(&unique_edges, |t| t.0).map(|ts| tuples(ts, |t| t.1));
-        let sbc = rab.clone();
-        let tac = rab.clone();
+        let r__ = ranges(&unique_edges, |t| t.0).map(|ts| tuples(ts, |t| t.1));
         let mut found: usize = 0;
-        for (a, (rb, tc)) in rab.join(tac).iter() {
-            for (b, (r, sc)) in rb.join(sbc.clone()).iter() {
-                for (c, (s, t)) in sc.join(tc.clone()).iter() {
+        for (a, ra_) in r__.clone().iter() { // optimize: omit the self-join.
+            for (b, (rab, rb_)) in ra_.clone().join(r__.clone()).iter() {
+                for (c, (rac, rbc)) in ra_.clone().join(rb_).iter() {
                     found += 1;
                     if found % 1_000_000 == 0 {
                         let millions = found / 1_000_000;
@@ -172,6 +173,23 @@ fn main() {
                 }
             }
         }
+
+        // // Previous, more naive version.
+        // let rab = ranges(&unique_edges, |t| t.0).map(|ts| tuples(ts, |t| t.1));
+        // let sbc = rab.clone();
+        // let tac = rab.clone();
+        // let mut found: usize = 0;
+        // for (a, (rb, tc)) in rab.join(tac).iter() {
+        //     for (b, (r, sc)) in rb.join(sbc.clone()).iter() {
+        //         for (c, (s, t)) in sc.join(tc.clone()).iter() {
+        //             found += 1;
+        //             if found % 1_000_000 == 0 {
+        //                 let millions = found / 1_000_000;
+        //                 println!("found {millions} million triangles");
+        //             }
+        //         }
+        //     }
+        // }
 
         println!("FOUND THEM ALL");
         dbg!(found);
@@ -187,6 +205,8 @@ fn main() {
     // `unique_edges`, roughly twice as much data; we're failing to take advantage of
     // `edges` being pre-sorted.
     if false {
+        println!("Simpler approach to undirected triangles.");
+
         // QUESTION: This pre-indexing step is natural and simple, but how do I
         // express it to a Datalog engine built on worst-case optimal joins? It
         // does not proceed in variable-at-a-time fashion, and the only reason
@@ -214,6 +234,88 @@ fn main() {
                         println!("found {millions} million triangles");
                     }
                 }
+            }
+        }
+
+        println!("FOUND THEM ALL");
+        dbg!(found);
+    }
+
+    // Hand-optimized version. Still uses `ranges`, though; I could do with optimizing
+    // that out.
+    if true {
+        println!("Hand-coded undirected triangles.");
+
+        let mut rev_edges: Vec<(u32, u32)> = edges
+            .iter()
+            .filter_map(|&(a, b)| if b < a { Some((b, a)) } else { None })
+            .collect();
+        rev_edges.sort();
+
+        let rev = ranges(&rev_edges, |t| t.0).map(|bs| tuples(bs, |t| t.1));
+        let fwd = ranges(edges, |t| t.0).map(|ts| {
+            let a = ts[0].0;
+            let mut bs = tuples(ts, |t| t.1);
+            // We pre-seek the inner iterator to the `a` value so that we only
+            // get tuples with a < b. We could do this more declaratively, but
+            // whatever.
+            bs.seek(Bound::Greater(a));
+            bs
+        });
+
+        let unique_edges: Vec<(u32, u32)> = fwd
+            .outer_join(rev)
+            .iter()
+            .flat_map(|(a, bs)| bs.keys().map(move |b| (a,b)))
+            .collect();
+        println!("Created unique_edges index.");
+
+        // prevent me from messing up and accessing edges instead of unique_edges.
+        let edges = ();
+
+        // The triangle query.
+        let mut found: usize = 0;
+        // edge(a,b) and edge(a,c) and edge(b,c)
+        for (a, bs) in ranges(&unique_edges, |t| t.0).iter() {
+            let mut bs_idx = 0;
+            let mut edge_idx = 0;
+            'outer: while bs_idx < bs.len() {
+                let (_, b) = bs[bs_idx];
+                let edge = &unique_edges[edge_idx];
+                edge_idx += unique_edges[edge_idx..].partition_point(|&(b2, _c)| b2 < b);
+                if edge_idx >= unique_edges.len() { break; }
+
+                // If there are no edges out of b, search forward for it.
+                let (b2, c) = unique_edges[edge_idx];
+                if b != b2 {
+                    bs_idx += bs[bs_idx..].partition_point(|&(_, b)| b < b2);
+                    continue;
+                }
+
+                // We've found edge(a,b). Now, find cs such that bs(a,c) and edge(b,c)
+                let mut cs_idx = bs_idx + 1;
+                while cs_idx < bs.len() {
+                    let (_, c) = bs[cs_idx];
+                    edge_idx += unique_edges[edge_idx..]
+                        .partition_point(|&(b3, c2)| b == b3 && c2 < c);
+                    if edge_idx >= unique_edges.len() { break 'outer; }
+
+                    let (b3, c2) = unique_edges[edge_idx];
+                    if b != b3 { break; }
+                    if c != c2 {
+                        // advance cs_idx!
+                        cs_idx += bs[cs_idx..].partition_point(|&(_, c)| c < c2);
+                        continue;
+                    }
+
+                    found += 1;
+                    if found % 1_000_000 == 0 {
+                        let millions = found / 1_000_000;
+                        println!("triangle {millions} million is {a} {b} {c}");
+                    }
+                    cs_idx += 1;
+                }
+                bs_idx += 1;
             }
         }
 
