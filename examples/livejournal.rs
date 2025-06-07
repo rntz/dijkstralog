@@ -4,8 +4,25 @@
 // https://snap.stanford.edu/data/soc-LiveJournal1.html
 // https://snap.stanford.edu/data/soc-LiveJournal1.txt.gz
 
+// FUTURE WORK: Parallelisation strategy, suggested by Tyler Hou:
+//
+// triangles_in(A) = triangles(A, A, A)
+//
+// triangles(A + B, A + B, A + B)
+// = triangles(A, A, A)
+// + triangles(A, A, B)
+// + triangles(A, B, A)
+// + triangles(A, B, B)
+// + triangles(B, A, A)
+// + triangles(B, A, B)
+// + triangles(B, B, A)
+// + triangles(B, B, B)
+//
+// We can execute these in parallel.
+// We can partition edges into A,B by hash-bucketing.
+
 use dijkstralog::iter;
-use dijkstralog::iter::{Seek, ranges, tuples};
+use dijkstralog::iter::{Seek, ranges, tuples, Bound, Outer};
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -13,7 +30,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 // total edges in soc-LiveJournal1.txt: 68,993,773
-//const MAX_EDGES: usize = 7_000_000;
+// const MAX_EDGES: usize = 10_000_000;
 const MAX_EDGES: usize = 100_000_000;
 
 fn main() {
@@ -50,50 +67,106 @@ fn main() {
     }
 
     let edges: &[(u32, u32)] = &edges;
-    let iter = ranges(edges, |t| t.0).map(|ts| ranges(ts, |t| t.1).map(|ts| ts.len()));
 
-    let rab = iter.clone();
-    let sbc = iter.clone();
-    let tac = iter.clone();
-
-    let mut found: usize = 0;
-    #[allow(unused_mut)] let mut triangles: Vec<(u32, u32, u32)> = Vec::new();
-    for (a, (rb, tc)) in rab.join(tac).iter() {
-        for (b, (r, sc)) in rb.join(sbc.clone()).iter() {
-            for (c, (s, t)) in sc.join(tc.clone()).iter() {
-                assert!(r * s * t == 1);
-                // triangles.push((a, b, c));
-                found += 1;
-                if found % 1_000_000 == 0 {
-                    let millions = found / 1_000_000;
-                    println!("found {millions} million triangles");
+    // FINDING DIRECTED ACYCLIC TRIANGLES
+    //
+    // Finds triples (a,b,c) satisfying:
+    //
+    //     edge(a,b)  edge(b,c)  edge(a,c)
+    //
+    // Since the edge relation is not symmetric, this omits some connected
+    // triangles, namely the "cyclic" triangles, which instead satisfy:
+    //
+    //     edge(a,b)  edge(b,c)  edge(c,a)
+    //
+    // Moreover, it can count the same three connected nodes {x,y,z} as up to 6
+    // distinct triangles, namely:
+    //
+    //     edge(x,y)  edge(y,z)  edge(x,z)
+    //     edge(x,z)  edge(z,y)  edge(x,y)
+    //     edge(y,x)  edge(x,z)  edge(y,z)
+    //     edge(y,z)  edge(z,x)  edge(y,x)
+    //     edge(z,x)  edge(x,y)  edge(z,y)
+    //     edge(z,y)  edge(y,x)  edge(z,x)
+    //
+    // Finally, since there are self-edges, the nodes (a,b,c) we find may not be
+    // distinct.
+    if false {
+        let rab = ranges(edges, |t| t.0).map(|ts| tuples(ts, |t| t.1));
+        let sbc = rab.clone();
+        let tac = rab.clone();
+        let mut found: usize = 0;
+        for (a, (rb, tc)) in rab.join(tac).iter() {
+            for (b, (r, sc)) in rb.join(sbc.clone()).iter() {
+                for (c, (s, t)) in sc.join(tc.clone()).iter() {
+                    found += 1;
+                    if found % 1_000_000 == 0 {
+                        let millions = found / 1_000_000;
+                        println!("found {millions} million triangles");
+                    }
                 }
             }
         }
+
+        println!("FOUND THEM ALL");
+        dbg!(found);
     }
 
-    println!("FOUND THEM ALL");
-    dbg!(found);
-    return;
+    // FINDING UNDIRECTED TRIANGLES
+    //
+    // Here we use the perhaps more familiar definition of a triangle as three
+    // distinct nodes connected by edges - no matter the direction of those
+    // edges. Moreover, we attempt to avoid counting any triangle more than once.
+    //
+    // In particular, we (first) symmetrize the edge relation and (second) avoid
+    // over-counting edges by considering only those from lower- to strictly
+    // higher-numbered nodes. This also excludes self-edges, enforcing
+    // distinctness.
+    if true {
+        // estimate capacity by guessing that b < a will rule out ~1/2 the edges
+        println!("Creating reverse index...");
+        let mut rev_edges: Vec<(u32, u32)> = Vec::with_capacity(edges.len() / 2);
+        for &(a, b) in edges {
+            if b < a {
+                rev_edges.push((b,a));
+            }
+        }
+        let n_rev_edges = rev_edges.len();
+        println!("Sorting reverse index of {n_rev_edges} edges...");
+        rev_edges.sort();
+        println!("Sorted.");
 
-    #[allow(unreachable_code)]
-    let n_triangles = triangles.len();
-    dbg!(triangles.len());
+        let rev = ranges(&rev_edges, |t| t.0).map(|ts| tuples(ts, |t| t.1));
+        let fwd = ranges(edges, |t| t.0).map(|ts| {
+            let a = ts[0].0;
+            let mut bs = tuples(ts, |t| t.1);
+            // We pre-seek the inner iterator to the `a` value so that we only
+            // get tuples with a < b. We could do this more declaratively, but
+            // whatever.
+            bs.seek(Bound::Greater(a));
+            bs
+        });
 
-    // // Let's compute the # of triangles directly.
-    // let mut real_triangles: Vec<(u32, u32, u32)> = Vec::new();
-    // for &(a, b) in edges {
-    //     for &(b2, c) in edges {
-    //         if b != b2 { continue }
-    //         for &(a2, c2) in edges {
-    //             if a != a2 || c != c2 { continue }
-    //             real_triangles.push((a, b, c))
-    //         }
-    //     }
-    // }
-    // dbg!(real_triangles.len());
+        // Undirected edge iterator that only allows edges from lower → higher.
+        let rab = fwd.outer_join(rev);
 
-    // dbg!(triangles == real_triangles);
-    // assert!(triangles.is_sorted() && real_triangles.is_sorted());
-    // assert!(triangles == real_triangles);
+        // Now, acyclic triangle query over this undirected edge trie.
+        let sbc = rab.clone();
+        let tac = rab.clone();
+        let mut found: usize = 0;
+        for (a, (rb, tc)) in rab.join(tac).iter() {
+            for (b, (r, sc)) in rb.join(sbc.clone()).iter() {
+                for (c, (s, t)) in sc.join(tc.clone()).iter() {
+                    found += 1;
+                    if found % 1_000_000 == 0 {
+                        let millions = found / 1_000_000;
+                        println!("found {millions} million triangles");
+                    }
+                }
+            }
+        }
+
+        println!("FOUND THEM ALL");
+        dbg!(found);
+    }
 }
