@@ -178,11 +178,9 @@ pub trait Seek {
         self.filter_map(move |v| v.lookup(key))
     }
 
-    #[inline(always)]
     fn iter(self) -> Iter<Self> where Self: Sized { Iter(self) }
 
     // Like Iterator::next.
-    #[inline(always)]
     fn next(&mut self) -> Option<(Self::Key, Self::Value)> {
         loop {
             match self.posn() {
@@ -201,7 +199,6 @@ pub trait Seek {
 pub struct Iter<S: Seek>(pub S);
 impl<S: Seek> Iterator for Iter<S> {
     type Item = (S::Key, S::Value);
-    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> { self.0.next() }
 }
 
@@ -270,14 +267,12 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Tuples<'a, X, F> {
     type Key = K;
     type Value = &'a X;
 
-    #[inline(always)]
     fn posn(&self) -> Position<K, &'a X> {
         if self.index >= self.elems.len() { return Know(Done) }
         let x = &self.elems[self.index];
         return Have((self.get_key)(x), x);
     }
 
-    #[inline(always)]
     fn seek(&mut self, target: Bound<K>) {
         self.index += self.elems[self.index..].partition_point(
             |x| !target.matches((self.get_key)(x))
@@ -323,7 +318,6 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Ranges<'a, X, F> {
     }
 
     // adjusts self.index_hi to the end of the region that self.index_lo begins.
-    #[inline(always)]
     fn seek_hi(&mut self) {
         self.index_hi = self.index_lo + if self.index_lo >= self.elems.len() { 0 } else {
             let key = (self.get_key)(&self.elems[self.index_lo]);
@@ -336,7 +330,6 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Ranges<'a, X, F> {
     type Key = K;
     type Value = &'a [X];
 
-    #[inline(always)]
     fn posn(&self) -> Position<K, &'a [X]> {
         if self.index_lo >= self.elems.len() { return Know(Done) }
         debug_assert!(self.index_lo < self.index_hi);
@@ -345,7 +338,6 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Ranges<'a, X, F> {
         return Have(key, xs);
     }
 
-    #[inline(always)]
     fn seek(&mut self, target: Bound<K>) {
         // Optimizations that let us start searching from self.index_hi instead
         // of self.index_lo.
@@ -367,12 +359,10 @@ impl<V, S: Seek, F: Fn(S::Value) -> V> Seek for Map<S, F> {
     type Key = S::Key;
     type Value = V;
 
-    #[inline(always)]
     fn posn(&self) -> Position<S::Key, V> {
         self.iter.posn().map(&self.func)
     }
 
-    #[inline(always)]
     fn seek(&mut self, target: Bound<S::Key>) {
         self.iter.seek(target)
     }
@@ -386,12 +376,10 @@ pub struct FilterMap<S, F> { iter: S, func: F }
 impl<V, S: Seek, F: Fn(S::Value) -> Option<V>> Seek for FilterMap<S, F> {
     type Key = S::Key;
     type Value = V;
-    #[inline(always)]
     fn posn(&self) -> Position<S::Key, V> {
         self.iter.posn().filter_map(&self.func)
     }
 
-    #[inline(always)]
     fn seek(&mut self, target: Bound<S::Key>) {
         self.iter.seek(target)
     }
@@ -507,12 +495,10 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
     type Key   = X::Key;
     type Value = (X::Value, Y::Value);
 
-    #[inline(always)]
     fn posn(&self) -> Position<X::Key, (X::Value, Y::Value)> {
         self.0.posn().inner_join(self.1.posn())
     }
 
-    #[inline(always)]
     fn seek(&mut self, target: Bound<X::Key>) {
         self.0.seek(target);
         self.1.seek(self.0.bound());
@@ -533,12 +519,10 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterJoin<X,Y> {
     type Key   = X::Key;
     type Value = Outer<X::Value, Y::Value>;
 
-    #[inline(always)]
     fn posn(&self) -> Position<X::Key, Outer<X::Value, Y::Value>> {
         return self.0.posn().outer_join(self.1.posn())
     }
 
-    #[inline(always)]
     fn seek(&mut self, target: Bound<X::Key>) {
         self.0.seek(target);
         self.1.seek(target);
@@ -550,7 +534,6 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for Outer<X,Y> {
     type Key   = X::Key;
     type Value = Outer<X::Value, Y::Value>;
 
-    #[inline(always)]
     fn posn(&self) -> Position<X::Key, Outer<X::Value, Y::Value>> {
         match self {
             Left(xs)    => xs.posn().map(|x| Left(x)),
@@ -559,7 +542,6 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for Outer<X,Y> {
         }
     }
 
-    #[inline(always)]
     fn seek(&mut self, target: Bound<X::Key>) {
         match self {
             Left(xs)  =>   xs.seek(target),
