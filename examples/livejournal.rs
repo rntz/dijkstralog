@@ -108,7 +108,6 @@ fn main() {
                 }
             }
         }
-
         println!("FOUND THEM ALL");
         dbg!(found);
     }
@@ -292,7 +291,7 @@ fn main() {
                     continue;
                 }
 
-                // We've found edge(a,b). Now, find cs such that bs(a,c) and edge(b,c)
+                // We've found edge(a,b). Now, find cs such that bs(a,c) and edge(b,c).
                 let mut cs_idx = bs_idx + 1;
                 while cs_idx < bs.len() {
                     let (_, c) = bs[cs_idx];
