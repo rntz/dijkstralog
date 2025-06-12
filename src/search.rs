@@ -69,14 +69,14 @@ pub fn recursive_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> us
     let mut lo = 0;
     loop {
         debug_assert!(lo < n && test(&elems[lo]));
-        let mut jump = 1;
-        let mut hi = lo + jump;
+        let mut step = 1;
+        let mut hi = lo + step;
         if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { return hi }
         // Exponential probing.
         loop {
             lo = hi;
-            jump <<= 1;
-            hi = lo + jump;
+            step <<= 1;
+            hi = lo + step;
             if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { break }
         }
     }
@@ -93,14 +93,14 @@ pub fn careful_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usiz
     let mut loopcount = 0;
     loop {
         debug_assert!(lo < n && test(&elems[lo]));
-        let mut jump = 1;
-        let mut hi = lo + jump;
+        let mut step = 1;
+        let mut hi = lo + step;
         if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { return hi }
         // Exponential probing.
         loop {
             lo = hi;
-            jump <<= 1;
-            hi = lo + jump;
+            step <<= 1;
+            hi = lo + step;
             if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { break }
         }
         // Bail out to binary search after enough iterations.
