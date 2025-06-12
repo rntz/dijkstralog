@@ -105,7 +105,7 @@ pub fn careful_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usiz
         }
         // Bail out to binary search after enough iterations.
         if loopcount > 16 {     // why is this the right magic number?!?!
-            return lo+1 + elems[lo+1..std::cmp::min(hi, n)].partition_point(test);
+            return lo+1 + elems[lo+1 .. hi.min(n)].partition_point(test);
         }
         loopcount += 1;
     }

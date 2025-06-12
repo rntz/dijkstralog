@@ -106,7 +106,7 @@ fromSortedArray lo hi get = at lo
           -- optimization to make "bumping" an iterator faster.
           | Greater k <- target, k == getKey i = at (i + 1)
           | otherwise = at $ snd $ binarySearch mid (test target) i hi
-        mid i j = if i + 1 == j then Nothing else Just $ (i + j) `div` 2
+        mid i j = if i + 1 == j then Nothing else Just $ (i + j) `div` 2 --overflow problem??
 
 -- Binary search, from https://byorgey.wordpress.com/2023/01/01/competitive-programming-in-haskell-better-binary-search/
 -- Finds a pair (l,r) such that (test l = False), (test r = True), and (mid l r = Nothing).

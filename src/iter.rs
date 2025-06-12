@@ -275,9 +275,18 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Tuples<'a, X, F> {
     }
 
     fn seek(&mut self, target: Bound<K>) {
+        // TAKE 1: search forward from current position
         self.index += self.elems[self.index..].search(
             |x| !target.matches((self.get_key)(x))
         )
+
+        // // TAKE 2: binary search from the start every time
+        // // NOPE THIS IS SLOWER WTF
+        // if self.index >= self.elems.len() { return }
+        // let key = (self.get_key)(&self.elems[self.index]);
+        // if target.matches(key) { return }
+        // if target == Greater(key) { self.index += 1; return; } // bump optimization
+        // self.index = self.elems.partition_point(|x| !target.matches((self.get_key)(x)))
     }
 }
 
@@ -317,7 +326,11 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Ranges<'a, X, F> {
         s.seek_hi();
         s
     }
+}
 
+
+// TAKE 1: search forward from current position
+impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Ranges<'a, X, F> {
     // adjusts self.index_hi to the end of the region that self.index_lo begins.
     fn seek_hi(&mut self) {
         self.index_hi = self.index_lo + if self.index_lo >= self.elems.len() { 0 } else {
@@ -335,8 +348,7 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Ranges<'a, X, F> {
         if self.index_lo >= self.elems.len() { return Know(Done) }
         debug_assert!(self.index_lo < self.index_hi);
         let key = (self.get_key)(&self.elems[self.index_lo]);
-        let xs = &self.elems[self.index_lo .. self.index_hi];
-        return Have(key, xs);
+        return Have(key, &self.elems[self.index_lo .. self.index_hi]);
     }
 
     fn seek(&mut self, target: Bound<K>) {
@@ -349,9 +361,67 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Ranges<'a, X, F> {
         if target.matches((self.get_key)(&self.elems[lo])) { return; }
         self.index_lo = hi + self.elems[hi..]
             .search(|x| !target.matches((self.get_key)(x)));
+            // .partition_point(|x| !target.matches((self.get_key)(x)));
         self.seek_hi();
     }
 }
+
+
+// // TAKE 2: search from the start every time
+// //
+// // This seek() calls partition_point() on the WHOLE SEQUENCE every time instead
+// // of searching forward from self.index_lo. Bizarrely, for triangle query (where
+// // we have 2-level tries and Ranges is used for the outer level only) - this
+// // performs BETTER searching forward when Search:search() is partition_point(),
+// // and competitively if Search::search is recursive_gallop() or similar.
+// //
+// // My guesswork explanation: maybe this is friendlier to the branch predictor
+// // and possibly also the cache? To the branch predictor, it always does exactly
+// // the same number of iterations. To the cache, it basically treats the sorted
+// // array like a compressed BST representation; so we're hitting the same nodes
+// // over and over again instead of dynamically changing our starting point.
+// //
+// // But, performance gets MUCH WORSE if I apply this strategy to Tuples as well
+// // as Ranges. Wtf?!?! Maybe the better locality of searching forward matters
+// // more when we get to individual tuples but when we're looking at big chunks
+// // binary search is more competitive?
+// //
+// // Also I wonder if this still applies once our data is too big for all N levels
+// // of the implicit BST to fit in cache. Can that even happen? What about cache
+// // collisions?
+// //
+// // And what if there are more than 2 trie levels?
+// impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Ranges<'a, X, F> {
+//     // adjusts self.index_hi to the end of the region that self.index_lo begins.
+//     fn seek_hi(&mut self) {
+//         self.index_hi = if self.index_lo >= self.elems.len() {
+//             self.index_lo
+//         } else {
+//             let key = (self.get_key)(&self.elems[self.index_lo]);
+//             self.elems.partition_point(|x| (self.get_key)(x) <= key)
+//             // self.index_lo + self.elems[self.index_lo..].search(|x| (self.get_key)(x) == key)
+//         };
+//     }
+// }
+
+// impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Ranges<'a, X, F> {
+//     type Key = K;
+//     type Value = &'a [X];
+
+//     fn posn(&self) -> Position<K, &'a [X]> {
+//         if self.index_lo >= self.elems.len() { return Know(Done) }
+//         debug_assert!(self.index_lo < self.index_hi);
+//         let key = (self.get_key)(&self.elems[self.index_lo]);
+//         return Have(key, &self.elems[self.index_lo .. self.index_hi]);
+//     }
+
+//     fn seek(&mut self, target: Bound<K>) {
+//         if self.index_lo >= self.elems.len() { return; }
+//         // if target.matches((self.get_key)(&self.elems[self.index_lo])) { return; }
+//         self.index_lo = self.elems.partition_point(|x| !target.matches((self.get_key)(x)));
+//         self.seek_hi();
+//     }
+// }
 
 
 // ---------- MAP ON VALUES ----------

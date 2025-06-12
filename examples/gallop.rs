@@ -1,6 +1,6 @@
 use dijkstralog::search::{
     //gallop_search as search
-    gallop as search,
+    careful_gallop as search,
     // gallop2 as search2,
 };
 
