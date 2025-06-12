@@ -30,7 +30,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 // total edges in soc-LiveJournal1.txt: 68,993,773
-const MAX_EDGES: usize = 10_000_000;
+const MAX_EDGES: usize = 20_000_000;
 //const MAX_EDGES: usize = 100_000_000;
 
 fn main() {

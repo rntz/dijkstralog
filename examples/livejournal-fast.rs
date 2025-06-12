@@ -23,6 +23,7 @@
 
 use dijkstralog::iter;
 use dijkstralog::iter::{Seek, ranges, tuples, Bound, Outer};
+use dijkstralog::search::Search;
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -30,7 +31,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 // total edges in soc-LiveJournal1.txt: 68,993,773
-const MAX_EDGES: usize = 10_000_000;
+const MAX_EDGES: usize = 20_000_000;
 //const MAX_EDGES: usize = 100_000_000;
 
 fn main() {
@@ -108,13 +109,13 @@ fn main() {
         'outer: while bs_idx < bs.len() {
             let (_, b) = bs[bs_idx];
             let edge = &unique_edges[edge_idx];
-            edge_idx += unique_edges[edge_idx..].partition_point(|&(b2, _c)| b2 < b);
+            edge_idx += unique_edges[edge_idx..].search(|&(b2, _c)| b2 < b);
             if edge_idx >= unique_edges.len() { break; }
 
             // If there are no edges out of b, search forward for it.
             let (b2, c) = unique_edges[edge_idx];
             if b != b2 {
-                bs_idx += bs[bs_idx..].partition_point(|&(_, b)| b < b2);
+                bs_idx += bs[bs_idx..].search(|&(_, b)| b < b2);
                 continue;
             }
 
@@ -123,14 +124,14 @@ fn main() {
             while cs_idx < bs.len() {
                 let (_, c) = bs[cs_idx];
                 edge_idx += unique_edges[edge_idx..]
-                    .partition_point(|&(b3, c2)| b == b3 && c2 < c);
+                    .search(|&(b3, c2)| b == b3 && c2 < c);
                 if edge_idx >= unique_edges.len() { break 'outer; }
 
                 let (b3, c2) = unique_edges[edge_idx];
                 if b != b3 { break; }
                 if c != c2 {
                     // advance cs_idx!
-                    cs_idx += bs[cs_idx..].partition_point(|&(_, c)| c < c2);
+                    cs_idx += bs[cs_idx..].search(|&(_, c)| c < c2);
                     continue;
                 }
 
