@@ -1,6 +1,7 @@
 use dijkstralog::search::{
     //gallop_search as search
-    recursive_gallop as search,
+    careful_gallop as search,
+    // gallop2 as search2,
 };
 
 fn main() {
@@ -18,10 +19,22 @@ fn main() {
             let actual = search(xs, |x| *x <= i);
             if actual != expect {
                 println!("Error! While searching {xs:?} for {i}, got index {actual}; expected {expect}.");
-                failures.push((i, n));
+                failures.push((n, i));
             } else {
-                println!("Success on ({i}, {n})");
+                println!("Success on ({n}, {i})");
             }
+
+            // for j in i..=n {
+            //     let (actual1, actual2) = search2(xs, |x| *x <= i, |x| *x <= j);
+            //     let (expect1, expect2) = (expect, xs.partition_point(|x| *x <= j));
+            //     if (actual1, actual2) != (expect1, expect2) {
+            //         println!("ERROR!");
+            //         failures.push((n, i));
+            //     } else {
+            //         println!("    and on ({n}, {i}, {j})");
+            //     }
+            // }
+
         }
     }
 
@@ -29,14 +42,4 @@ fn main() {
         println!("FAILURES: {failures:?}");
         panic!("test case(s) failed");
     }
-
-    // let xs: &[u32] = &[1, 2, 3, 4, 5];
-    // for i in 0..6 {
-    //     let x = search(xs, |x| *x <= i);
-    //     let y = xs.partition_point(|x| *x <= i);
-    //     if x != y {
-    //         println!("***** ERROR! got {x}, expect {y}");
-    //         panic!("***** ERROR! got {x}, expect {y}");
-    //     }
-    // }
 }

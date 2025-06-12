@@ -15,8 +15,8 @@ fn example1() {
     let mut it = ranges(xys, |t| t.0);
     loop {
         let p = it.posn();
-        println!("{p:?}");
-        println!("{it:?}");
+        println!("posn  {p:?}");
+        println!("iter  {it:?}");
         println!();
         match p {
             Know(Done) => break,
