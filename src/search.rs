@@ -1,3 +1,5 @@
+// Functions for searching in sorted lists.
+
 pub trait Search {
     type Item;
     fn search<F: FnMut(&Self::Item) -> bool>(&self, test: F) -> usize;
@@ -20,6 +22,7 @@ impl<'a, X> Search for &'a [X] {
     }
 }
 
+// Exponential probing followed by binary search.
 pub fn gallop_basic<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
     let n = elems.len();
     let mut lo = 0;
@@ -30,12 +33,10 @@ pub fn gallop_basic<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize 
         lo = hi;
         hi *= 2;
     }
-    // println!("searching {lo} .. {hi} in {elems:?}");
     return lo + elems[lo .. hi].partition_point(test);
 }
 
-
-// Based on DataFrog's gallop(),
+// Same idea but inlining the binary search phase. Based on DataFrog's gallop(),
 // https://github.com/rust-lang/datafrog/blob/07bf407c740db506a56bcb4af3eb474eb83ca815/src/join.rs#L137
 pub fn gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
     let n = elems.len();
@@ -56,6 +57,66 @@ pub fn gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
     return lo + 1;
 }
 
+// Instead of falling back to binary search, recursively gallop-search the discovered
+// region. Performs better in my testing than gallop() but has worse worst-case behavior.
+// I think O((log n)^2) instead of O(log n) but I haven't double-checked/proven it.
+pub fn recursive_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
+    let n = elems.len();
+    if n == 0 { return 0 }
+    if !test(unsafe { elems.get_unchecked(0) }) { return 0 }
+
+    let mut lo = 0;
+    loop {
+        debug_assert!(lo < n && test(&elems[lo]));
+        let mut jump = 1;
+        let mut hi = lo + jump;
+        if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { return hi }
+        // Exponential probing.
+        loop {
+            lo = hi;
+            jump <<= 1;
+            hi = lo + jump;
+            if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { break }
+        }
+    }
+}
+
+// Attempts to ensure O(log n) worst case of gallop() while preserving the good practical
+// performance of recursive_gallop(). TODO: analyse the actual worst-case time.
+pub fn careful_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
+    let n = elems.len();
+    if n == 0 { return 0 }
+    if !test(unsafe { elems.get_unchecked(0) }) { return 0 }
+
+    let mut lo = 0;
+    let mut loopcount = 0;
+    loop {
+        debug_assert!(lo < n && test(&elems[lo]));
+        let mut jump = 1;
+        let mut hi = lo + jump;
+        if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { return hi }
+        // Exponential probing.
+        loop {
+            lo = hi;
+            jump <<= 1;
+            hi = lo + jump;
+            if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { break }
+        }
+        // Bail out to binary search after enough iterations.
+        if loopcount > 16 {     // why is this the right magic number?!?!
+            return lo+1 + elems[lo+1..std::cmp::min(hi, n)].partition_point(test);
+        }
+        loopcount += 1;
+    }
+}
+
+// // Searching simultaneously for two predicates, one of which is more selective; this could
+// // be used in iter::Ranges::seek(). In my testing it produced a small speedup over
+// // gallop_basic(). I suspect I could further improve this by chasing the "separating
+// // plane" intuition all the way through binary search. But to get a perf boost I'd also
+// // need to adapt this to incorporate recursive_gallop() or careful_gallop()'s approach;
+// // too much of a hassle right now.
+//
 // pub fn gallop2<X, F1, F2>(elems: &[X], mut test1: F1, mut test2: F2) -> (usize, usize)
 // where F1: FnMut(&X) -> bool, F2: FnMut(&X) -> bool {
 //     let n = elems.len();
@@ -82,57 +143,3 @@ pub fn gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
 //     return (lo1 + elems[lo1..hi1].partition_point(test1),
 //             lo2 + elems[lo2..hi2].partition_point(test2))
 // }
-
-// Performs better in my testing than gallop() but has worse worst-case behavior. I think
-// O((log n)^2) instead of O(log n) but I haven't double-checked/proven it.
-pub fn recursive_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
-    let n = elems.len();
-    let mut lo = 0;
-
-    if n == 0 { return 0 }
-    if !test(unsafe { elems.get_unchecked(0) }) { return 0 }
-
-    loop {
-        debug_assert!(lo < n && test(&elems[lo]));
-        let mut jump = 1;
-        let mut hi = lo + jump;
-        if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { return hi }
-        // Exponential probing.
-        loop {
-            lo = hi;
-            jump <<= 1;
-            hi = lo + jump;
-            if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { break }
-        }
-    }
-}
-
-// Attempts to ensure O(log n) worst case of gallop() while preserving the good practical
-// performance of recursive_gallop(). TODO: analyse the actual worst-case time.
-pub fn careful_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
-    let n = elems.len();
-    let mut lo = 0;
-
-    if n == 0 { return 0 }
-    if !test(unsafe { elems.get_unchecked(0) }) { return 0 }
-
-    let mut loopcount = 0;
-    loop {
-        debug_assert!(lo < n && test(&elems[lo]));
-        let mut jump = 1;
-        let mut hi = lo + jump;
-        if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { return hi }
-        // Exponential probing.
-        loop {
-            lo = hi;
-            jump <<= 1;
-            hi = lo + jump;
-            if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { break }
-        }
-        // Bail out to binary search after enough iterations.
-        if loopcount > 16 {     // why is this the right magic number?!?!
-            return lo+1 + elems[lo+1..std::cmp::min(hi, n)].partition_point(test);
-        }
-        loopcount += 1;
-    }
-}
