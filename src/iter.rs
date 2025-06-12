@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use crate::search::Search;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Bound<K> {
@@ -274,7 +275,7 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Tuples<'a, X, F> {
     }
 
     fn seek(&mut self, target: Bound<K>) {
-        self.index += self.elems[self.index..].partition_point(
+        self.index += self.elems[self.index..].search(
             |x| !target.matches((self.get_key)(x))
         )
     }
@@ -321,7 +322,7 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Ranges<'a, X, F> {
     fn seek_hi(&mut self) {
         self.index_hi = self.index_lo + if self.index_lo >= self.elems.len() { 0 } else {
             let key = (self.get_key)(&self.elems[self.index_lo]);
-            self.elems[self.index_lo..].partition_point(|x| (self.get_key)(x) == key)
+            self.elems[self.index_lo..].search(|x| (self.get_key)(x) == key)
         };
     }
 }
@@ -341,11 +342,13 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Ranges<'a, X, F> {
     fn seek(&mut self, target: Bound<K>) {
         // Optimizations that let us start searching from self.index_hi instead
         // of self.index_lo.
-        if self.index_lo >= self.elems.len() { return; }
-        if target.matches((self.get_key)(&self.elems[self.index_lo])) { return; }
-        self.index_lo = self.index_hi
-            + self.elems[self.index_hi..]
-                  .partition_point(|x| !target.matches((self.get_key)(x)));
+        let lo = self.index_lo;
+        let hi = self.index_hi;
+        let len = self.elems.len();
+        if lo >= len { return; }
+        if target.matches((self.get_key)(&self.elems[lo])) { return; }
+        self.index_lo = hi + self.elems[hi..]
+            .search(|x| !target.matches((self.get_key)(x)));
         self.seek_hi();
     }
 }
