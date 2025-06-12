@@ -17,8 +17,9 @@ impl<'a, X> Search for &'a [X] {
     type Item = X;
     #[inline(always)]
     fn search<F: FnMut(&X) -> bool>(&self, test: F) -> usize {
-        // return self.partition_point(test);
+        // ----------> DEFAULT SEARCH FUNCTION CHOICE GOES HERE <----------
         return careful_gallop(self, test);
+        // return self.partition_point(test);
     }
 }
 
