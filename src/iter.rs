@@ -344,7 +344,7 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Ranges<'a, X, F> {
         let hi = self.index_hi;
         let len = self.elems.len();
         // Optimizations that let us start searching from self.index_hi instead
-        // of self.index_lo. TODO: test whether these are worth it.
+        // of self.index_lo.
         if lo >= len { return; }
         if target.matches((self.get_key)(&self.elems[lo])) { return; }
         self.index_lo = hi + self.elems[hi..]

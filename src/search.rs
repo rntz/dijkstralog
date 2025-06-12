@@ -21,7 +21,7 @@ impl<'a, X> Search for &'a [X] {
     #[inline(always)]
     fn search<F: FnMut(&X) -> bool>(&self, test: F) -> usize {
         // return self.partition_point(test);
-        return recursive_gallop(self, test);
+        return careful_gallop(self, test);
     }
 }
 
@@ -39,6 +39,33 @@ pub fn gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
     return lo + elems[lo .. hi].partition_point(test);
 }
 
+// pub fn gallop2<X, F1, F2>(elems: &[X], mut test1: F1, mut test2: F2) -> (usize, usize)
+// where F1: FnMut(&X) -> bool, F2: FnMut(&X) -> bool {
+//     let n = elems.len();
+//     let mut lo1 = 0;
+//     let mut hi1 = 1;
+//     // Find where test1 starts being false.
+//     loop {
+//         if hi1 >= n { hi1 = n; break; }
+//         if !test1(unsafe { elems.get_unchecked(hi1) }) { break }
+//         lo1 = hi1;
+//         hi1 *= 2;
+//     }
+//     // Find where test2 starts being false.
+//     let mut lo2 = lo1;
+//     debug_assert!(lo2 >= elems.len() || test2(&elems[lo2]));
+//     let mut hi2 = hi1;
+//     loop {
+//         if hi2 >= n { hi2 = n; break; }
+//         if !test2(unsafe { elems.get_unchecked(hi2) }) { break }
+//         lo2 = hi2;
+//         hi2 *= 2;
+//     }
+//     // TODO: If they overlap, should we do something special??
+//     return (lo1 + elems[lo1..hi1].partition_point(test1),
+//             lo2 + elems[lo2..hi2].partition_point(test2))
+// }
+
 // Performs better in my testing than gallop() but has worse worst-case behavior. I think
 // O((log n)^2) instead of O(log n) but I haven't double-checked/proven it.
 pub fn recursive_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
@@ -46,7 +73,7 @@ pub fn recursive_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> us
     let mut lo = 0;
 
     if n == 0 { return 0 }
-    if !test(&elems[0]) { return 0 }
+    if !test(unsafe { elems.get_unchecked(0) }) { return 0 }
 
     loop {
         debug_assert!(lo < n && test(&elems[lo]));
@@ -60,5 +87,35 @@ pub fn recursive_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> us
             hi = lo + jump;
             if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { break }
         }
+    }
+}
+
+// Attempts to ensure O(log n) worst case of gallop() while preserving the good practical
+// performance of recursive_gallop(). TODO: analyse the actual worst-case time.
+pub fn careful_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
+    let n = elems.len();
+    let mut lo = 0;
+
+    if n == 0 { return 0 }
+    if !test(unsafe { elems.get_unchecked(0) }) { return 0 }
+
+    let mut loopcount = 0;
+    loop {
+        debug_assert!(lo < n && test(&elems[lo]));
+        let mut jump = 1;
+        let mut hi = lo + jump;
+        if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { return hi }
+        // Exponential probing.
+        loop {
+            lo = hi;
+            jump <<= 1;
+            hi = lo + jump;
+            if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { break }
+        }
+        // Bail out to binary search after enough iterations.
+        if loopcount > 16 {     // why is this the right magic number?!?!
+            return lo+1 + elems[lo+1..std::cmp::min(hi, n)].partition_point(test);
+        }
+        loopcount += 1;
     }
 }
