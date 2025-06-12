@@ -1,8 +1,3 @@
-// TODO: try using Datafrog's galloping search implementation. I _think_ it's just a
-// standard exponential-probe-to-find-range-then-binary-search-in-range, but it's very
-// elegantly done:
-//
-// https://github.com/rust-lang/datafrog/blob/07bf407c740db506a56bcb4af3eb474eb83ca815/src/join.rs#L137
 pub trait Search {
     type Item;
     fn search<F: FnMut(&Self::Item) -> bool>(&self, test: F) -> usize;
@@ -25,7 +20,7 @@ impl<'a, X> Search for &'a [X] {
     }
 }
 
-pub fn gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
+pub fn gallop_basic<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
     let n = elems.len();
     let mut lo = 0;
     let mut hi = 1;
@@ -37,6 +32,28 @@ pub fn gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
     }
     // println!("searching {lo} .. {hi} in {elems:?}");
     return lo + elems[lo .. hi].partition_point(test);
+}
+
+
+// Based on DataFrog's gallop(),
+// https://github.com/rust-lang/datafrog/blob/07bf407c740db506a56bcb4af3eb474eb83ca815/src/join.rs#L137
+pub fn gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
+    let n = elems.len();
+    if n == 0 || !test(&elems[0]) { return 0 }
+    let mut lo = 0;
+    let mut step = 1;
+    while step < n - lo && test(&elems[lo + step]) {
+        lo += step;
+        step <<= 1;
+    }
+    step >>= 1;
+    while step > 0 {
+        if step < n - lo && test(&elems[lo + step]) {
+            lo += step;
+        }
+        step >>= 1;
+    }
+    return lo + 1;
 }
 
 // pub fn gallop2<X, F1, F2>(elems: &[X], mut test1: F1, mut test2: F2) -> (usize, usize)

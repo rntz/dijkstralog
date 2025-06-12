@@ -1,6 +1,6 @@
 use dijkstralog::search::{
     //gallop_search as search
-    careful_gallop as search,
+    gallop as search,
     // gallop2 as search2,
 };
 
@@ -11,8 +11,8 @@ fn main() {
 
     let mut failures: Vec<(u32, u32)> = Vec::new();
 
-    for n in 0..=5 {
-        let vec: Vec<u32> = (0..n).collect();
+    for n in 1..=5 {
+        let vec: Vec<u32> = (1..n).collect();
         let xs: &[u32] = vec.as_slice();
         for i in 0..=n {
             let expect = xs.partition_point(|x| *x <= i);
@@ -21,7 +21,7 @@ fn main() {
                 println!("Error! While searching {xs:?} for {i}, got index {actual}; expected {expect}.");
                 failures.push((n, i));
             } else {
-                println!("Success on ({n}, {i})");
+                println!("Success on ({n}, {i}): got {expect} looking for x > {i} in  {vec:?}");
             }
 
             // for j in i..=n {
