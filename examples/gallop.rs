@@ -11,7 +11,7 @@ fn main() {
 
     let mut failures: Vec<(u32, u32)> = Vec::new();
 
-    for n in 1..=5 {
+    for n in 1..=7 {
         let vec: Vec<u32> = (1..n).collect();
         let xs: &[u32] = vec.as_slice();
         for i in 0..=n {
