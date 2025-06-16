@@ -1,3 +1,5 @@
+// TODO: rename this module "seek".
+
 use std::cmp::Ordering;
 use crate::search::Search;
 
@@ -70,7 +72,7 @@ impl<K: Ord + Copy, V> Position<K, V> {
         }
     }
 
-    pub fn outer_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, Outer<V, U>> {
+    pub fn outer_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, OuterPair<V, U>> {
         match self.bound().cmp(&other.bound()) {
             Ordering::Less    => self.map(|v| Left(v)),
             Ordering::Greater => other.map(|v| Right(v)),
@@ -580,19 +582,19 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
 
 
 
-// ---------- OUTER JOIN ----------
+// ---------- BINARY OUTER JOIN ----------
 #[derive(Debug, Copy, Clone)]
 pub struct OuterJoin<X,Y>(pub X, pub Y);
 
 #[derive(Debug, Copy, Clone)]
-pub enum Outer<A, B> { Both(A,B), Left(A), Right(B), }
-use Outer::*;
+pub enum OuterPair<A, B> { Both(A,B), Left(A), Right(B), }
+use OuterPair::*;
 
 impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterJoin<X,Y> {
     type Key   = X::Key;
-    type Value = Outer<X::Value, Y::Value>;
+    type Value = OuterPair<X::Value, Y::Value>;
 
-    fn posn(&self) -> Position<X::Key, Outer<X::Value, Y::Value>> {
+    fn posn(&self) -> Position<X::Key, OuterPair<X::Value, Y::Value>> {
         return self.0.posn().outer_join(self.1.posn())
     }
 
@@ -603,11 +605,11 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterJoin<X,Y> {
 }
 
 // The results of an outer join can be iterated over as an outer join.
-impl<X: Seek, Y:Seek<Key=X::Key>> Seek for Outer<X,Y> {
+impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterPair<X,Y> {
     type Key   = X::Key;
-    type Value = Outer<X::Value, Y::Value>;
+    type Value = OuterPair<X::Value, Y::Value>;
 
-    fn posn(&self) -> Position<X::Key, Outer<X::Value, Y::Value>> {
+    fn posn(&self) -> Position<X::Key, OuterPair<X::Value, Y::Value>> {
         match self {
             Left(xs)    => xs.posn().map(|x| Left(x)),
             Right(ys)   => ys.posn().map(|y| Right(y)),

@@ -22,7 +22,7 @@
 // We can partition edges into A,B by hash-bucketing.
 
 use dijkstralog::iter;
-use dijkstralog::iter::{Seek, ranges, tuples, Bound, Outer};
+use dijkstralog::iter::{Seek, ranges, tuples, Bound};
 use dijkstralog::search::Search;
 
 use std::fs::File;
