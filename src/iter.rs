@@ -625,3 +625,94 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterPair<X,Y> {
         }
     }
 }
+
+
+// ---------- HOMOGENOUS SMALL MULTIWAY OUTER JOIN ----------
+#[derive(Debug, Copy, Clone)]
+pub struct OuterArray<const N: usize, A> {
+    len: usize,
+    elems: [A; N],
+}
+
+impl<const N: usize, A> OuterArray<N, A> {
+    pub fn as_slice(&self) -> &[A] { &self.elems[0..self.len] }
+
+    pub fn push(&mut self, elem: A) {
+        assert!(self.len < N);
+        self.elems[self.len] = elem;
+        self.len += 1;
+    }
+}
+
+impl<const N: usize, A: Default + Copy> OuterArray<N, A> {
+    pub fn singleton(elem: A) -> Self {
+        assert!(N > 0);
+        let mut elems = [A::default(); N];
+        elems[0] = elem;
+        OuterArray { len: 1, elems }
+    }
+}
+
+// TODO: this ought to be TryFrom since it can fail.
+impl<const N: usize, A, X> From<X> for OuterArray<N, A> where
+    X: IntoIterator<Item = A>,
+    [A; N]: Default,
+{
+    fn from(source: X) -> Self {
+        let mut elems: [A; N] = Default::default();
+        let mut len = 0usize;
+        for x in source.into_iter() {
+            if len >= N { panic!("TOO MANY VALUES TO PUT IN OUTER ARRAY"); }
+            elems[len] = x;
+            len += 1;
+        }
+        return OuterArray { len, elems }
+    }
+}
+
+// impl<const N: usize, A: Default + Copy> Default for OuterArray<N, A> {
+//     // Be careful with this. Generally OuterArrays should not be empty.
+//     fn default() -> Self {
+//         OuterArray {
+//             len: 0,
+//             elems: [A::default(); N],
+//         }
+//     }
+// }
+
+impl<const N: usize, S: Seek> Seek for OuterArray<N, S>
+where S::Value: Copy + Default
+{
+    type Key = S::Key;
+    type Value = OuterArray<N, S::Value>;
+
+    fn posn(&self) -> Position<S::Key, OuterArray<N, S::Value>> {
+        let mut bound: Bound<S::Key> = Done;
+        let mut result: Position<S::Key, OuterArray<N, S::Value>> = Know(bound);
+        for i in 0 .. self.len {
+            let p = self.elems[i].posn();
+            let b = p.bound();
+            match b.cmp(&bound) {
+                Ordering::Greater => {} // ignore it.
+                Ordering::Equal => match (&mut result, p) {
+                    (Have(_, vs), Have(_, v)) => { vs.push(v) }
+                    _ => { result = Know(b) }
+                }
+                Ordering::Less => {
+                    bound = b;
+                    result = match p {
+                        Know(b) => Know(b),
+                        Have(k,v) => Have(k, OuterArray::singleton(v)),
+                    };
+                }
+            }
+        }
+        return result
+    }
+
+    fn seek(&mut self, target: Bound<S::Key>) {
+        for i in 0 .. self.len {
+            self.elems[i].seek(target);
+        }
+    }
+}
