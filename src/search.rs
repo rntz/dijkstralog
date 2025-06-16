@@ -19,7 +19,7 @@ impl<'a, X> Search for &'a [X] {
     fn search<F: FnMut(&X) -> bool>(&self, test: F) -> usize {
         // ----------> DEFAULT SEARCH FUNCTION CHOICE GOES HERE <----------
         return careful_gallop(self, test);
-        // return self.partition_point(test);
+        //return self.partition_point(test);
     }
 }
 
@@ -37,7 +37,8 @@ pub fn gallop_basic<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize 
     return lo + elems[lo .. hi].partition_point(test);
 }
 
-// Same idea but inlining the binary search phase. Based on DataFrog's gallop(),
+// Same idea but inlining the binary search phase; slightly faster in my testing. Based on
+// DataFrog's gallop(),
 // https://github.com/rust-lang/datafrog/blob/07bf407c740db506a56bcb4af3eb474eb83ca815/src/join.rs#L137
 pub fn gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
     let n = elems.len();
@@ -59,8 +60,9 @@ pub fn gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
 }
 
 // Instead of falling back to binary search, recursively gallop-search the discovered
-// region. Performs better in my testing than gallop() but has worse worst-case behavior.
-// I think O((log n)^2) instead of O(log n) but I haven't double-checked/proven it.
+// region. Performs better in my testing than gallop() but has worse worst-case
+// asymptotics. I think O((log k)^2) instead of O(log k) where k is the index of the
+// sought-after key.
 pub fn recursive_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
     let n = elems.len();
     if n == 0 { return 0 }
@@ -82,8 +84,8 @@ pub fn recursive_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> us
     }
 }
 
-// Attempts to ensure O(log n) worst case of gallop() while preserving the good practical
-// performance of recursive_gallop(). TODO: analyse the actual worst-case time.
+// Attempts to ensure O(log k) worst case of gallop() while preserving the good practical
+// performance of recursive_gallop().
 pub fn careful_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
     let n = elems.len();
     if n == 0 { return 0 }
