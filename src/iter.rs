@@ -152,13 +152,6 @@ pub trait Seek {
     where Self: Sized, B: FromIterator<(Self::Key, Self::Value)>
     { self.iter().collect() }
 
-    // fn values(mut self) -> impl Iterator<Item = Self::Value> where Self: Sized
-    // { self.iter().map(|(k,v)| v) }
-
-    // fn map_collect<X, F>(mut self, mut func: F) -> Vec<X>
-    // where Self: Sized, F: FnMut(Self::Key, Self::Value) -> X
-    // { self.iter().map(|(k,v)| func(k,v)).collect() }
-
     fn iter(self) -> Iter<Self> where Self: Sized { Iter(self) }
     fn keys(self) -> IterKeys<Self> where Self: Sized { IterKeys(self) }
 
@@ -233,29 +226,6 @@ impl<S: Seek> Seek for Option<S> {
 }
 
 
-// // ---------- SEEKING IN SORTED LISTS ----------
-// #[derive(Clone)]
-// struct Slice<'a, K, V> {
-//     elems: &'a [(K, V)],
-//     index: usize,
-// }
-
-// impl<'a, K: Ord, V> Seek for Slice<'a, K, V> {
-//     type Key = &'a K;
-//     type Value = &'a V;
-
-//     fn posn(&self) -> Position<&'a K, &'a V> {
-//         if self.index >= self.elems.len() { return Know(Done) }
-//         let (k, v) = &self.elems[self.index];
-//         return Have(k, v);
-//     }
-
-//     fn seek(&mut self, target: Bound<&'a K>) {
-//         self.index += self.elems[self.index..].partition_point(|x| !target.matches(&x.0))
-//     }
-// }
-
-
 // ---------- SORTED DUPLICATE-FREE LIST WITH NO KEY/VALUE STUFF ----------
 pub struct Elements<'a, X> {
     elems: &'a [X],
@@ -317,14 +287,6 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Tuples<'a, X, F> {
         self.index += self.elems[self.index..].search(
             |x| !target.matches((self.get_key)(x))
         )
-
-        // // TAKE 2: binary search from the start every time
-        // // NOPE THIS IS SLOWER WTF
-        // if self.index >= self.elems.len() { return }
-        // let key = (self.get_key)(&self.elems[self.index]);
-        // if target.matches(key) { return }
-        // if target == Greater(key) { self.index += 1; return; } // bump optimization
-        // self.index = self.elems.partition_point(|x| !target.matches((self.get_key)(x)))
     }
 }
 
