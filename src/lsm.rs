@@ -203,34 +203,4 @@ impl<K, V> LSM<(K, V)> where
             }
         };
     }
-
-    // pub fn seek(&self) -> impl Seek<Key=K, Value=V> {
-    //     // 4 billion tuples should be enough for anyone!
-    //     //
-    //     // TODO: bump size to 48 and manually initialize a 48-element OuterArray
-    //     // here instead of relying on From.
-    //     const N: usize = 32;
-    //     assert!(self.layers.len() < N);
-    //     let array: OuterArray<N, _> =
-    //         self.layers
-    //         .iter()
-    //     // Some() is an annoying hack to make the iterator type implement
-    //     // Default. TODO: instead create an empty layer and manually
-    //     // initialize the rest of the OuterArray with iterators over it.
-    //         .map(|layer| Some(layer.seek()))
-    //         .into();
-    //     array.map(|vs| {
-    //         // Sum up all the elements we found.
-    //         let mut x: V = Add::zero();
-    //         for y in vs.as_slice() {
-    //             x = x.plus(*y);
-    //         }
-    //         x
-    //     })
-    // }
-
-    // 4 billion tuples should be enough for anyone!
-    //
-    // TODO: bump MAX_LEVELS to 48 and manually initialize a 48-element
-    // OuterArray in seek() instead of relying on From.
 }
