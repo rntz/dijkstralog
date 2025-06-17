@@ -588,7 +588,7 @@ pub struct OuterJoin<X,Y>(pub X, pub Y);
 pub enum OuterPair<A, B> { Both(A,B), Left(A), Right(B), }
 use OuterPair::*;
 
-impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterJoin<X,Y> {
+impl<X: Seek, Y:Seek<Key = X::Key>> Seek for OuterJoin<X,Y> {
     type Key   = X::Key;
     type Value = OuterPair<X::Value, Y::Value>;
 
