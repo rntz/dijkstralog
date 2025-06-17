@@ -110,55 +110,6 @@ where
 
         debug_assert!(self.elems.is_sorted_by_key(|&(k,_)| k));
     }
-
-    // // Below lies an abandoned attempt at an efficient in-place merge. I decided
-    // // I'd need to understand more about writing unsafe code safely - for
-    // // instance, memory initialization - to implement this.
-    // //
-    // // see eg https://doc.rust-lang.org/std/mem/union.MaybeUninit.html for some
-    // // of the complexity here.
-    // //
-    // // I think I'd be happy to assume both keys & values are Copy, though, which
-    // // should simplify things.
-    //
-    // pub fn merge(&mut self, mut other: Layer<A>) {
-    //     if other.elems.len() > self.elems.len() {
-    //         // Always merge smaller into larger.
-    //         std::mem::swap(&mut self.elems, &mut other.elems);
-    //     }
-    //     // Move each element at most once. We use reserve_exact() instead of
-    //     // reserve() because we only ever insert into the smallest "nursery"
-    //     // layer; once this is merged with a larger layer, a new nursery is
-    //     // created.
-    //     let n = self.elems.len();
-    //     let m = other.elems.len();
-    //     self.elems.reserve_exact(m);
-    //     debug_assert!(self.elems.capacity() >= n + m);
-    //     let _buf = self.elems.as_mut_ptr();
-    //     let mut dups = 0usize;
-    //     unsafe {
-    //         // We merge from the end to avoid overwriting things in self.elems.
-    //         // Note that these indexes are all 1-based, so that 0 means "nothing
-    //         // left" and we don't need to have negative numbers.
-    //         let mut i = n;
-    //         let mut j = m;
-    //         let mut k = m + n;
-    //         while j > 0 {      // while there's stuff to be merged in
-    //             debug_assert!(k > 0);
-    //             k -= 1;
-    //             // put the biggest thing at _buf[k-1].
-    //             if i == 0 || *_buf.add(i-1) < other.elems[j] {
-    //                 j -= 1;
-    //                 *_buf.add(k) = other.elems[j];
-    //             } else {
-    //                 i -= 1;
-    //                 if x > other.elems[j] {
-    //                 }
-    //             }
-    //         }
-    //         self.elems.set_len(n + m);
-    //     }
-    // }
 }
 
 // Log-structured merge "tree" of sorted lists.
