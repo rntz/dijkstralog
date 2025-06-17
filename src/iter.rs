@@ -256,6 +256,33 @@ impl<S: Seek> Seek for Option<S> {
 // }
 
 
+// ---------- SORTED DUPLICATE-FREE LIST WITH NO KEY/VALUE STUFF ----------
+pub struct Elements<'a, X> {
+    elems: &'a [X],
+    index: usize,
+}
+
+pub fn elements<X: Ord + Copy>(elems: &[X]) -> Elements<X> {
+    return Elements { elems, index: 0 }
+}
+
+impl<'a, X: Ord + Copy> Seek for Elements<'a, X> {
+    type Key = X;
+    type Value = ();
+
+    fn posn(&self) -> Position<X, ()> {
+        if self.index >= self.elems.len() { Know(Done) }
+        else { Have(self.elems[self.index], ()) }
+    }
+
+    fn seek(&mut self, target: Bound<X>) {
+        self.index += self.elems[self.index..].search(
+            |x| !target.matches(*x)
+        )
+    }
+}
+
+
 // ---------- SEEKING IN A SORTED DUPLICATE-FREE LIST ----------
 // Assumes the underlying slice is sorted by get_key() with NO DUPLICATES.
 #[derive(Clone)]
