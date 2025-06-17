@@ -680,17 +680,27 @@ impl<const N: usize, A> OuterArray<N, A> {
     }
 }
 
-impl<const N: usize, A: Default + Copy> OuterArray<N, A> {
+// We currently require [A; N]: Default, but in principle we only need
+// `singleton_to_array(elem: A) -> [A; N]`, which in turn should only need
+// `make_dummy(elem: &A) -> A`. We don't care what `make_dummy(elem)` returns; it serves
+// as a "dummy" to pad out the rest of the array. In particular, either copying `elem` or
+// making a default `A` value suffices.
+impl<const N: usize, A> OuterArray<N, A> where
+    [A; N]: Default
+{
     pub fn singleton(elem: A) -> Self {
         assert!(N > 0);
-        let mut elems = [A::default(); N];
+        let mut elems: [A; N] = Default::default();
         elems[0] = elem;
         OuterArray { len: 1, elems }
     }
 }
 
-// TODO: this ought to be TryFrom since it can fail.
-impl<const N: usize, A, X> From<X> for OuterArray<N, A> where
+// We currently require [A; N]: Default here, too. To allow `make_dummy` to suffice, we
+// can panic if the iterator doesn't generate at least one element - in our use case, this
+// shouldn't happen.
+impl<const N: usize, A, X> From<X> for OuterArray<N, A>
+where
     X: IntoIterator<Item = A>,
     [A; N]: Default,
 {
@@ -706,18 +716,9 @@ impl<const N: usize, A, X> From<X> for OuterArray<N, A> where
     }
 }
 
-// impl<const N: usize, A: Default + Copy> Default for OuterArray<N, A> {
-//     // Be careful with this. Generally OuterArrays should not be empty.
-//     fn default() -> Self {
-//         OuterArray {
-//             len: 0,
-//             elems: [A::default(); N],
-//         }
-//     }
-// }
-
 impl<const N: usize, S: Seek> Seek for OuterArray<N, S>
-where S::Value: Copy + Default
+where
+    [S::Value; N]: Default,
 {
     type Key = S::Key;
     type Value = OuterArray<N, S::Value>;
