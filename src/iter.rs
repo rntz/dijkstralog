@@ -152,9 +152,6 @@ pub trait Seek {
     where Self: Sized, B: FromIterator<(Self::Key, Self::Value)>
     { self.iter().collect() }
 
-    fn keys(self) -> impl Iterator<Item = Self::Key> where Self: Sized
-    { self.iter().map(|(k,_v)| k) }
-
     // fn values(mut self) -> impl Iterator<Item = Self::Value> where Self: Sized
     // { self.iter().map(|(k,v)| v) }
 
@@ -162,26 +159,8 @@ pub trait Seek {
     // where Self: Sized, F: FnMut(Self::Key, Self::Value) -> X
     // { self.iter().map(|(k,v)| func(k,v)).collect() }
 
-    // If the only reason we need the iterator is to look up a particular key,
-    // we can do that.
-    fn lookup(mut self, key: Self::Key) -> Option<Self::Value> where Self: Sized {
-        loop {
-            self.seek(Atleast(key));
-            return match self.posn() {
-                Know(p) if p.matches(key) => continue,
-                Have(k, v) if k == key => Some(v),
-                _ => None,
-            }
-        }
-    }
-
-    // Fuses a lookup onto the value of an iterator.
-    fn map_lookup(self, key: <Self::Value as Seek>::Key) -> impl Seek<Key = Self::Key, Value = <Self::Value as Seek>::Value>
-    where Self: Sized, Self::Value: Seek {
-        self.filter_map(move |v| v.lookup(key))
-    }
-
     fn iter(self) -> Iter<Self> where Self: Sized { Iter(self) }
+    fn keys(self) -> IterKeys<Self> where Self: Sized { IterKeys(self) }
 
     // Like Iterator::next.
     fn next(&mut self) -> Option<(Self::Key, Self::Value)> {
@@ -196,6 +175,30 @@ pub trait Seek {
             }
         }
     }
+
+    // Forcibly advances to a specific key. Will infinite loop if called on an
+    // unproductive iterator.
+    fn seek_to(&mut self, key: Self::Key) -> Option<Self::Value> {
+        loop {
+            self.seek(Atleast(key));
+            return match self.posn() {
+                Know(p) if p.matches(key) => continue,
+                Have(k, v) if k == key => Some(v),
+                _ => None,
+            }
+        }
+    }
+
+    // Looks up a particular key, consuming the iterator.
+    fn lookup(mut self, key: Self::Key) -> Option<Self::Value> where Self: Sized {
+        self.seek_to(key)
+    }
+
+    // Fuses a lookup onto the value of an iterator.
+    fn map_lookup(self, key: <Self::Value as Seek>::Key) -> impl Seek<Key = Self::Key, Value = <Self::Value as Seek>::Value>
+    where Self: Sized, Self::Value: Seek {
+        self.filter_map(move |v| v.lookup(key))
+    }
 }
 
 // Rust-native iteration over seekable iterators
@@ -203,6 +206,12 @@ pub struct Iter<S: Seek>(pub S);
 impl<S: Seek> Iterator for Iter<S> {
     type Item = (S::Key, S::Value);
     fn next(&mut self) -> Option<Self::Item> { self.0.next() }
+}
+
+pub struct IterKeys<S: Seek>(pub S);
+impl<S: Seek> Iterator for IterKeys<S> {
+    type Item = S::Key;
+    fn next(&mut self) -> Option<Self::Item> { self.0.next().map(|x| x.0) }
 }
 
 
