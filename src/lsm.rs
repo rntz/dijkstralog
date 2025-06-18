@@ -1,6 +1,3 @@
-// Many things here are adapted from
-// https://github.com/frankmcsherry/blog/blob/master/posts/2025-06-03.md
-
 use crate::iter::*;
 
 // Needed for combining values when deduplicating (eg merging levels).
@@ -44,6 +41,14 @@ const NURSERY_MAX_SIZE: usize = 64;
 // for arrays up to size 32 in Rust's stdlib.
 pub const MAX_LEVELS: usize = 32;
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct Pair<K, V> { pub key: K, pub value: V, }
+pub type Key<K> = Pair<K, ()>;
+
+impl<K, V> From<Pair<K, V>> for (K, V) { fn from(pair: Pair<K, V>) -> (K, V) { (pair.key, pair.value) } }
+impl<K, V> From<(K, V)> for Pair<K, V> { fn from((key, value): (K,V)) -> Pair<K, V> { Pair { key, value } } }
+impl<K> From<K> for Pair<K, ()> { fn from(key: K) -> Pair<K, ()> { Pair { key, value: () } } }
+
 // A sorted, de-duplicated list.
 // TODO: rename this "Sorted"?
 #[derive(Clone)]
@@ -53,14 +58,16 @@ pub struct Layer<A> {
     elems: Vec<A>,
 }
 
-impl<A> Default for Layer<A> { fn default() -> Self { Layer { elems: Vec::new() } } }
+impl<A> Default for Layer<A> {
+    fn default() -> Self { Layer { elems: Vec::new() } }
+}
 
 impl<A> Layer<A> {
     pub fn as_slice(&self) -> &[A] { self.elems.as_slice() }
     pub fn len(&self) -> usize { self.elems.len() }
 }
 
-impl<K, V> Layer<(K, V)>
+impl<K, V> Layer<Pair<K, V>>
 where
     K: Copy + Ord,
     // In principle we don't need Clone here but it makes implementing merge() a
@@ -69,46 +76,69 @@ where
 {
     pub fn new() -> Self { Layer { elems: Vec::new() } }
 
-    pub fn from_sorted(elems: Vec<(K, V)>) -> Self {
-        assert!(elems.is_sorted_by_key(|&(k,_)| k));
+    pub fn from_sorted(elems: Vec<Pair<K, V>>) -> Self {
+        assert!(elems.is_sorted_by_key(|x| x.key));
         Layer { elems }
     }
 
-    pub fn size(&self) -> usize {
-        self.elems.len()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &(K, V)> {
+    pub fn iter(&self) -> impl Iterator<Item = &Pair<K, V>> {
         self.elems.iter()
     }
 
     pub fn push(&mut self, key: K, value: V) {
-        match self.elems.binary_search_by(|(k,_)| k.cmp(&key)) {
-            Err(idx) => self.elems.insert(idx, (key, value)),
+        match self.elems.binary_search_by(|x| x.key.cmp(&key)) {
+            Err(idx) => self.elems.insert(idx, Pair { key, value }),
             Ok(_) => return,    // already present, do nothing
         }
     }
 
-    pub fn merge(&mut self, other: Layer<(K, V)>) {
-        // We should merge two layers only when their sizes are within a power
-        // of 2 of each other.
-        debug_assert!(self.elems.len() <= 2 * other.elems.len());
-        debug_assert!(other.elems.len() <= 2 * self.elems.len());
-        debug_assert!(self.elems.is_sorted_by_key(|&(k,_)| k));
-        debug_assert!(other.elems.is_sorted_by_key(|&(k,_)| k));
+    #[allow(unused_mut)]  // FIXME
+    pub fn merge(mut self, other: Layer<Pair<K, V>>) -> Self {
+        println!(" merging {} with {}", self.len(), other.len());
 
-        self.elems = tuples(self.elems.as_slice(), |x| x.0)
-            .outer_join(tuples(other.elems.as_slice(), |x| x.0))
-            .map(|outer| match outer {
-                //  ~*~=~*~  SEMIRING SEMANTICS  ~*~=~*~
-                OuterPair::Both((_, x), (_, y)) => x.clone().plus(y.clone()),
-                OuterPair::Left((_, x)) => x.clone(),
-                OuterPair::Right((_, y)) => y.clone(),
-            })
-            .iter()
-            .collect();
+        // TODO: Instead of using an outer join, implement this manually. Do I get a
+        // significant speedup? Then my outer join implementation sucks and I need to fix
+        // it.
+        //
+        // I get a measurable, but not large, speedup from using this hand-written merge
+        // instead of outer_join. Transitive closure on first 150k edges in
+        // soc-LiveJournal1.txt goes from 24s (outer_join) to 21s (handwritten).
 
-        debug_assert!(self.elems.is_sorted_by_key(|&(k,_)| k));
+        if true {              // handwritten
+            let mut results: Vec<Pair<K, V>> = Vec::with_capacity(self.elems.len() + other.elems.len());
+            let mut iter1 = self.elems.into_iter().peekable();
+            let mut iter2 = other.elems.into_iter().peekable();
+            use std::cmp::Ordering::*;
+            while let (Some(x), Some(y)) = (iter1.peek(), iter2.peek()) {
+                match x.key.cmp(&y.key) {
+                    Less => { results.push(iter1.next().unwrap()); }
+                    Greater => { results.push(iter2.next().unwrap()); }
+                    Equal => {
+                        let mut x = iter1.next().unwrap();
+                        let y = iter2.next().unwrap();
+                        x.value = x.value.plus(y.value);
+                        results.push(x);
+                    }
+                }
+            }
+            results.extend(iter1);
+            results.extend(iter2);
+            return Layer { elems: results }
+
+        } else {                // outer_join
+            self.elems = tuples(self.elems.as_slice(), |x| x.key)
+                .outer_join(tuples(other.elems.as_slice(), |x| x.key))
+                .map(|outer| match outer {
+                    //  ~*~=~*~  SEMIRING SEMANTICS  ~*~=~*~
+                    OuterPair::Both(x, y) => x.value.clone().plus(y.value.clone()),
+                    OuterPair::Left(x) => x.value.clone(),
+                    OuterPair::Right(y) => y.value.clone(),
+                })
+                .iter()
+                .map(|(key, value)| Pair { key, value })
+                .collect();
+            return self
+        }
     }
 }
 
@@ -120,36 +150,29 @@ pub struct LSM<A> {
     layers: Vec<Layer<A>>,
 }
 
-impl<A> Default for LSM<A> { fn default() -> Self { LSM { layers: Vec::new() } } }
-
-impl<'a, A: Copy + Ord> IntoIterator for &'a LSM<A> {
-    type Item = A;
-    // absurdly large type tiem.
-    type IntoIter = IterKeys<OuterArray<{ MAX_LEVELS }, Option<Elements<'a, A>>>>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.seek(|slice| elements(slice)).keys()
-    }
-}
-
 impl<A> LSM<A> {
-    pub fn layers(&self) -> impl Iterator<Item = &Layer<A>> {
-        self.layers.iter()
+    pub fn new() -> Self { LSM { layers: Vec::new() } }
+    pub fn layers(&self) -> impl Iterator<Item = &Layer<A>> { self.layers.iter() }
+
+    pub fn debug_dump(&self, prefix: &str) {
+        for (i, l) in self.layers.iter().rev().enumerate() {
+            println!("{prefix}{i}: {} entries", l.len());
+        }
     }
 }
 
-impl<A> LSM<A> where
-    A: Copy + Ord,
-{
+impl<A> Default for LSM<A> { fn default() -> Self { LSM::new() } }
+
+// ===== SEEKERATING an LSM =====
+impl<A> LSM<A> {
     // We might want to ensure our return type is also Clone; it's helpful to be
     // able to clone Seekerators.
-    pub fn seek<'a, S, F>(
+    pub fn seek_with<'a, S, F>(
         &'a self,                 // <========== IMPORTANT LIFETIME ANNOTATION
         seek_slice: F,
     ) -> OuterArray<{ MAX_LEVELS }, Option<S>> // annoying Option
     where
         S: Seek,
-        // Default: needed to construct OuterArray of values in join result tuples.
-        S::Value: Default,
         F: Fn(&'a [A]) -> S, // <========== MATCHING LIFETIME ANNOTATION
     {
         assert!(self.layers.len() <= MAX_LEVELS);
@@ -157,50 +180,87 @@ impl<A> LSM<A> where
             self.layers
             .iter()
             // Some() is an annoying hack to make the iterator type implement
-            // Default. TODO: instead create an empty layer and manually
-            // initialize the rest of the OuterArray with iterators over it.
+            // Default, needed for OuterArray::into(). TODO: instead create an
+            // empty layer and manually initialize the rest of the OuterArray
+            // with iterators over it.
             .map(|layer| Some(seek_slice(layer.elems.as_slice())))
-            .into();
+            .collect();
         return array
     }
-
 }
 
-impl<K, V> LSM<(K, V)> where
-    K: Copy + Ord,
-    // V: Clone is needed for Layer::merge (currently).
-    // V: Default is needed for OuterArray::from.
-    V: Clone + Default + Add,
-{
-    pub fn new() -> Self { LSM { layers: Vec::new() } }
+// impl<'a, A: Copy + Ord> IntoIterator for &'a LSM<A> {
+//     type Item = A;
+//     // absurdly large type tiem.
+//     type IntoIter = IterKeys<OuterArray<{ MAX_LEVELS }, Option<Elements<'a, A>>>>;
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.seek_with(|slice| elements(slice)).keys()
+//     }
+// }
 
-    // TODO: If we hand push() a layer that's bigger than some layers already
-    // present, currently it will simply merge all these into itself until it
-    // hits a big enough layer. This is... fine? The cost of constructing the
-    // layer we're given "pays" (in amortized analysis) for the merges. But it's
-    // not necessary; we could instead skip past layers less than half our size.
-    // This might be better?
-    pub fn push(&mut self, mut layer: Layer<(K, V)>) {
-        // Merge layers until factor-of-two invariant is restored.
-        while let Some(next) = self.layers.pop_if(|l| l.size() <= 2 * layer.size()) {
-            layer.merge(next);
+// ===== GROWING an LSM =====
+// Adapted from the FactLSM::{push, tidy} implementations in
+// https://github.com/frankmcsherry/blog/blob/master/posts/2025-06-03.md#data-oriented-design--columns
+impl<K, V> LSM<Pair<K, V>> where
+    K: Copy + Ord,
+    // V: Clone + Add needed for Layer::merge. We might be able to get rid of
+    // the Clone requirement with some careful programming.
+    V: Clone + Add,
+{
+    pub fn push(&mut self, layer: Layer<Pair<K, V>>) {
+        print!("pushing {} entries into ", layer.len());
+        if self.layers.is_empty() {
+            println!("empty LSM");
+        } else {
+            println!("{}-layer LSM:", self.layers.len());
+            self.debug_dump("  ");
         }
+
         self.layers.push(layer);
+        self.layers.sort_by(|x, y| y.len().cmp(&x.len())); // sort in descending order
+        while let Some(pos) = (1..self.layers.len()).position(
+            |i| self.layers[i-1].len() < 2 * self.layers[i].len()
+        ) {
+            print!("collision at layer {pos},");
+            while self.layers.len() > pos + 1 {
+                let x = self.layers.pop().unwrap();
+                let y = self.layers.pop().unwrap();
+                self.layers.push(x.merge(y));
+                self.layers.sort_by(|x, y| y.len().cmp(&x.len()));
+            }
+        }
+
+        println!("Done! result:");
+        self.debug_dump("  ");
     }
 
     // Equivalent to self.push(Layer { elems: vec![(key, value)] }) but
     // potentially more efficient. I should probably delete this.
     pub fn push_one(&mut self, key: K, value: V) {
-        assert!(self.layers.is_sorted_by_key(|l| std::cmp::Reverse(l.size())));
-        match self.layers.pop_if(|n| n.size() < NURSERY_MAX_SIZE) {
+        match self.layers.pop_if(|n| n.len() < NURSERY_MAX_SIZE) {
             Some(mut nursery) => {
                 nursery.push(key, value);
                 self.push(nursery);
             }
             // Create a new nursery.
             None => {
-                self.layers.push(Layer { elems: vec![(key, value)] });
+                self.layers.push(Layer { elems: vec![Pair { key, value }] });
             }
         };
+    }
+
+    pub fn seeker(&self) -> impl Seek<Key = K, Value = V> {
+        self.seek_with(|slice| tuples(slice, |x| x.key).map(|x| x.value.clone()))
+            .map(|vs| {
+                let mut x: V = Add::zero();
+                for v in vs.as_slice() {
+                    x = x.plus(v.clone());
+                }
+                x
+            })
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (K, V)> {
+        self.seeker().iter()
     }
 }
