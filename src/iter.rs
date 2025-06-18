@@ -207,6 +207,12 @@ impl<S: Seek> Iterator for IterKeys<S> {
     fn next(&mut self) -> Option<Self::Item> { self.0.next().map(|x| x.0) }
 }
 
+pub struct IterValues<S: Seek>(pub S);
+impl<S: Seek> Iterator for IterValues<S> {
+    type Item = S::Value;
+    fn next(&mut self) -> Option<Self::Item> { self.0.next().map(|x| x.1) }
+}
+
 
 // ---------- SEEKING IN AN OPTION ----------
 impl<S: Seek> Seek for Option<S> {
@@ -264,13 +270,7 @@ pub struct Tuples<'a, X, F> {
 
 pub fn tuples<K, X, F>(elems: &[X], get_key: F) -> Tuples<X, F>
 where K: Ord + Copy, F: Fn(&X) -> K
-{ Tuples::new(elems, get_key) }
-
-impl<'a, K: Ord + Copy, X, F: Fn(&X) -> K> Tuples<'a, X, F> {
-    pub fn new(elems: &'a [X], get_key: F) -> Tuples<'a ,X, F> {
-        Tuples { elems, index: 0, get_key }
-    }
-}
+{ Tuples { elems, index: 0, get_key } }
 
 impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Tuples<'a, X, F> {
     type Key = K;
@@ -313,19 +313,14 @@ impl<X, F> std::fmt::Debug for Ranges<'_, X, F> {
 }
 
 pub fn ranges<X, K, F>(elems: &[X], get_key: F) -> Ranges<X,F>
-where K: Ord + Copy, F: Fn(&X) -> K
-{ Ranges::new(elems, get_key) }
-
-impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Ranges<'a, X, F> {
-    pub fn new(elems: &'a [X], get_key: F) -> Ranges<'a, X, F> {
-        let mut s = Ranges { elems, index_lo: 0, index_hi: 0, get_key };
-        // NB. This initial seek_hi() might be wasted work if the first
-        // operation is a seek() to some higher key. I could avoid it by making
-        // posn() first check whether index_lo == index_hi. Is that worth it?
-        // Dunno.
-        s.seek_hi();
-        s
-    }
+where K: Ord + Copy, F: Fn(&X) -> K {
+    let mut s = Ranges { elems, index_lo: 0, index_hi: 0, get_key };
+    // NB. This initial seek_hi() might be wasted work if the first
+    // operation is a seek() to some higher key. I could avoid it by making
+    // posn() first check whether index_lo == index_hi. Is that worth it?
+    // Dunno.
+    s.seek_hi();
+    s
 }
 
 
