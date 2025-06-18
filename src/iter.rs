@@ -624,70 +624,110 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterPair<X,Y> {
 
 
 // ---------- HOMOGENOUS SMALL MULTIWAY OUTER JOIN ----------
-#[derive(Debug, Copy, Clone)]
+use std::mem::MaybeUninit;
+
+#[derive(Debug)] // do we want a Clone instance? we'd have to write it ourselves.
 pub struct OuterArray<const N: usize, A> {
     len: usize,
-    elems: [A; N],
+    elems: [MaybeUninit<A>; N],
 }
+
+// Hopefully this gets optimized out if A::drop() is a no-op. Otherwise I need
+// to re-design this code.
+impl<const N: usize, A> Drop for OuterArray<N, A> {
+    #[inline(always)]
+    fn drop(&mut self) {
+        for i in 0..self.len {
+            unsafe { self.elems[i].assume_init_drop() }
+        }
+    }
+}
+
+// impl<const N: usize, A> IntoIterator for OuterArray<N, A> {
+//     type Item = A;
+//     type IntoIter = OuterArrayIntoIter<N, A>;
+//     #[inline(always)]
+//     fn into_iter(self) -> OuterArrayIntoIter<N, A> {
+//         OuterArrayIntoIter {
+//             index: 0,
+//             len: self.len,
+//             elems: self.elems,
+//         }
+//     }
+// }
+
+// pub struct OuterArrayIntoIter<const N: usize, A> {
+//     index: usize,
+//     len: usize,
+//     elems: [MaybeUninit<A>; N],
+// }
+
+// impl<const N: usize, A> Iterator for OuterArrayIntoIter<N, A> {
+//     type Item = A;
+//     fn next(&mut self) -> Option<A> {
+//         debug_assert!(self.index <= self.len);
+//         if self.index == self.len { return None }
+//         let x = unsafe { self.elems[self.index].assume_init_read() };
+//         self.index += 1;
+//         return Some(x);
+//     }
+// }
 
 impl<const N: usize, A> OuterArray<N, A> {
-    pub fn as_slice(&self) -> &[A] { &self.elems[0..self.len] }
+    pub const fn new() -> OuterArray<N, A> {
+        OuterArray {
+            len: 0,
+            elems: [ const { MaybeUninit::uninit() }; N],
+        }
+    }
+
+    pub fn as_slice(&self) -> &[A] {
+        // stolen from implementation of [T]::assume_init_ref,
+        // https://doc.rust-lang.org/std/primitive.slice.html#method.assume_init_ref
+        // https://doc.rust-lang.org/src/core/mem/maybe_uninit.rs.html#1520
+        let xs: &[MaybeUninit<A>] = &self.elems[0 .. self.len];
+        unsafe { &*(xs as *const [MaybeUninit<A>] as *const [A]) }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [A] {
+        // stolen from implementation of assume_init_mut,
+        // https://doc.rust-lang.org/std/primitive.slice.html#method.assume_init_mut
+        let xs: &mut [MaybeUninit<A>] = &mut self.elems[0 .. self.len];
+        unsafe { &mut *(xs as *mut [MaybeUninit<A>] as *mut [A]) }
+    }
 
     pub fn push(&mut self, elem: A) {
-        assert!(self.len < N);
-        self.elems[self.len] = elem;
+        if self.len >= N {
+            panic!("TOO MANY VALUES TO PUT IN OUTER ARRAY");
+        }
+        self.elems[self.len].write(elem);
         self.len += 1;
     }
-}
 
-// We currently require [A; N]: Default, but in principle we only need
-// `singleton_to_array(elem: A) -> [A; N]`, which in turn should only need
-// `make_dummy(elem: &A) -> A`. We don't care what `make_dummy(elem)` returns; it serves
-// as a "dummy" to pad out the rest of the array. In particular, either copying `elem` or
-// making a default `A` value suffices.
-impl<const N: usize, A> OuterArray<N, A> where
-    [A; N]: Default
-{
     pub fn singleton(elem: A) -> Self {
-        assert!(N > 0);
-        let mut elems: [A; N] = Default::default();
-        elems[0] = elem;
-        OuterArray { len: 1, elems }
+        let mut arr = OuterArray::new();
+        arr.push(elem);
+        return arr
     }
 }
 
-// We currently require [A; N]: Default here, too. To allow `make_dummy` to suffice, we
-// can panic if the iterator doesn't generate at least one element - in our use case, this
-// shouldn't happen.
-impl<const N: usize, A, X> From<X> for OuterArray<N, A>
-where
-    X: IntoIterator<Item = A>,
-    [A; N]: Default,
-{
-    fn from(source: X) -> Self {
-        let mut elems: [A; N] = Default::default();
-        let mut len = 0usize;
-        for x in source.into_iter() {
-            if len >= N { panic!("TOO MANY VALUES TO PUT IN OUTER ARRAY"); }
-            elems[len] = x;
-            len += 1;
-        }
-        return OuterArray { len, elems }
+impl<const N: usize, A> FromIterator<A> for OuterArray<N, A> {
+    fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
+        let mut arr = OuterArray::new();
+        for x in iter { arr.push(x) }
+        return arr;
     }
 }
 
-impl<const N: usize, S: Seek> Seek for OuterArray<N, S>
-where
-    [S::Value; N]: Default,
-{
+impl<const N: usize, S: Seek> Seek for OuterArray<N, S> {
     type Key = S::Key;
     type Value = OuterArray<N, S::Value>;
 
     fn posn(&self) -> Position<S::Key, OuterArray<N, S::Value>> {
         let mut bound: Bound<S::Key> = Done;
         let mut result: Position<S::Key, OuterArray<N, S::Value>> = Know(bound);
-        for i in 0 .. self.len {
-            let p = self.elems[i].posn();
+        for iter in self.as_slice() {
+            let p = iter.posn();
             let b = p.bound();
             match b.cmp(&bound) {
                 Ordering::Greater => {} // ignore it.
@@ -708,8 +748,8 @@ where
     }
 
     fn seek(&mut self, target: Bound<S::Key>) {
-        for i in 0 .. self.len {
-            self.elems[i].seek(target);
+        for it in self.as_mut_slice() {
+            it.seek(target);
         }
     }
 }
