@@ -166,6 +166,7 @@ pub trait Seek {
 
     fn iter(self) -> Iter<Self> where Self: Sized { Iter(self) }
     fn keys(self) -> IterKeys<Self> where Self: Sized { IterKeys(self) }
+    fn values(self) -> IterValues<Self> where Self: Sized { IterValues(self) }
 
     // Like Iterator::next.
     #[inline(always)]
