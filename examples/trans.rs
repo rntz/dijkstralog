@@ -1,4 +1,4 @@
-#![allow(unused_imports, unused_variables, unreachable_code, unused_mut)]
+#![allow(unused_imports, unused_variables, unreachable_code, unused_mut, unused_assignments)]
 
 // Use the SNAP soc-LiveJournal1.txt data set:
 // https://snap.stanford.edu/data/soc-LiveJournal1.html
@@ -7,7 +7,7 @@
 use dijkstralog::iter;
 use dijkstralog::iter::{Seek, ranges, tuples, Bound};
 use dijkstralog::lsm;
-use dijkstralog::lsm::{LSM, Layer};
+use dijkstralog::lsm::{LSM, Layer, Pair, Key};
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -16,9 +16,11 @@ use std::path::Path;
 
 // total edges in soc-LiveJournal1.txt: 68,993,773
 //const MAX_EDGES: usize = 48;
-//const MAX_EDGES: usize = 70_000;
-const MAX_EDGES: usize = 90_000;
-//const MAX_EDGES: usize = 100_000_000;
+//const MAX_EDGES: usize = 20_000;
+//const MAX_EDGES: usize = 80_000;
+//const MAX_EDGES: usize = 100_000;
+const MAX_EDGES: usize = 150_000;
+//const MAX_EDGES: usize = 1_000_000; // don't do this.
 
 fn load_livejournal() -> Vec<(u32, u32)> {
     let path = Path::new("data/soc-LiveJournal1.txt");
@@ -60,96 +62,98 @@ const DEBUG: bool = false;
 
 fn main() {
     let edges: Vec<(u32, u32)> = load_livejournal();
-    // TODO: Instead of this, I could just sort edges by the reverse lexical!
-    let mut rev_edges: Vec<(u32, u32)> = edges.iter().map(|&(a,b)| (b,a)).collect();
-    rev_edges.sort();
-    let rev_edges = rev_edges.as_slice();
+    let edges = edges.as_slice();
     if DEBUG {
-        println!("edges: {:?}", edges.as_slice());
-        println!("rev_edges: {:?}", rev_edges);
+        println!("edges: {:?}", edges);
     }
 
+    // trans a b <- edge a b
+    // trans a c <- trans a b, edge b c
+    //
+    // implemented as
+    //
+    // Δtrans 0     a b = edge a b
+    // Δtrans (i+1) a b = Δtrans i a b * edge b c
+    //  trans (i+1)     = trans i + Δtrans i
+
     #[allow(unused_mut)]
-    let mut trans: LSM<((u32, u32), ())> = LSM::new();
+    let mut trans: LSM<Key<(u32, u32)>> = LSM::new();
     #[allow(unused_mut)]
-    let mut delta_trans: Layer<((u32, u32), ())> = Layer::from_sorted(
-        edges.iter().map(|&kv| (kv, ())).collect()
+    let mut delta_trans: Layer<Key<(u32, u32)>> = Layer::from_sorted(
+        edges.iter().map(|&kv| kv.into()).collect()
     );
 
-
     let mut itercount = 0;
-
-    // trans(a,b) <- edge(a,b)
-    // trans(a,c) <- edge(a,b), trans(b,c)
     while !delta_trans.as_slice().is_empty() {
+        itercount += 1;
         println!("\n-- iter {itercount} --");
         let ntrans = trans.layers().map(|l| l.len()).sum::<usize>();
         let ndelta = delta_trans.len();
         println!("trans (overcount): {ntrans:>10} ≈ {ntrans:3.0e}");
         println!("      delta_trans: {ndelta:>10} ≈ {ndelta:3.0e}");
-        itercount += 1;
 
-        // Delta rule:
-        // Δtrans'(a,c) <- rev_edge(b,a), Δtrans(b,c), ¬trans(a,c)
-        let mut new_delta_trans: Vec<((u32, u32), ())> = Vec::new();
-        {
-            // We antijoin with trans to remove tuples we already know about.
-            // I'm not sure whether it's better to do this here, or as a
-            // post-processing step.
-            // let mut trans_seek = trans.seek(
-            //     |slice| tuples(slice, |kv| kv.0).map(|_| ())
-            // );
-            //
-            // TODO FIXME: This actually generates duplicates! It deduplicates
-            // against trans, but not against delta_trans! weird!
-            dijkstralog::nest! {
-                for (_b, (delta_slice, rev_edge_slice)) in
-                    ranges(delta_trans.as_slice(), |x| x.0.0)
-                    .join(ranges(rev_edges, |x| x.0))
-                    .iter();
-                // println!("trans_seek b={_b}");
-                let mut trans_seek = trans.seek(
-                    |slice| tuples(slice, |kv| kv.0).map(|_| ())
-                );
-                for &(_b, a) in rev_edge_slice;
-                for &((_b, c), ()) in delta_slice;
-                // wait, shit. don't we need to do multiple passes over trans_seek here??
-                // argh!!!
-                if trans_seek.seek_to((a,c)).is_none() {
-                    // NB. at this point we can generate a duplicate (a,c) tuple!
-                    if DEBUG { println!("  found {a:>2} -- {_b:2} -* {c:<2}"); }
-                    new_delta_trans.push(((a, c), ()))
-                } else {
-                    if DEBUG { println!("        {a:>2} -- {_b:2} -* {c:<2} omitted"); }
-                }
-            }
+        // -- COMPUTE DELTA:  Δtrans' a c = Δtrans a b * edge b c
+        print!("Delta rules ");
+        std::io::stdout().flush().unwrap();
+        let mut new_paths: Vec<(u32, u32)> = Vec::new();
+        dijkstralog::nest! {
+            for (a, delta_a) in ranges(delta_trans.as_slice(), |x| x.key.0).iter();
+            for (b, (delta_ab, edges_b)) in tuples(delta_a, |x| x.key.1)
+                .join(ranges(edges, |x| x.0))
+                .iter();
+            for &(_, c) in edges_b;
+            new_paths.push((a, c))
         }
+        let npaths = new_paths.len();
+        println!("found {} ≈ {:.0e} potential paths.", npaths, npaths);
 
-        // Update rules:
-        // trans' <- trans + Δtrans
+        // --  UPDATE TRANS:  trans' = trans + Δtrans
         trans.push(delta_trans);
         // This^ consumes delta_trans! implications for evaluation order of full
         // Datalog system?
 
-        new_delta_trans.sort();
-        new_delta_trans.dedup(); // IMPORTANT
-        if DEBUG {
-            println!(
-                "new deltas: {:?}",
-                new_delta_trans.as_slice()
-                    .iter()
-                    .map(|(kv, _)| kv)
-                    .collect::<Vec<_>>()
-            );
+        // TODO: try optimizing this sort using the fact that new_paths(a,c) is
+        // already sorted on `a`; each `a`-chunk just needs sorting,
+        // deduplicating, & minifying of the `c`s.
+        println!("Sorting {} ≈ {:.0e} new paths...", npaths, npaths);
+        new_paths.sort();       // <-- THE PLURALITY OF OUR TIME IS SPENT HERE
+        println!("Sorted, now deduplicating...");
+        new_paths.dedup();      // is this slow?
+        println!("Deduplicated, now minifying...");
+        let mut new_delta_trans: Vec<Key<(u32, u32)>> = Vec::with_capacity(new_paths.len());
+        let mut trans_seek = trans.seeker();
+        for ac in new_paths {
+            // this is taking a significant amount of time!
+            if trans_seek.seek_to(ac).is_none() {
+                if DEBUG { println!("found {:>2} -> {:<2}", ac.0, ac.1); }
+                new_delta_trans.push(ac.into())
+            } else {
+                if DEBUG { println!("      {:>2} -> {:<2} already found", ac.0, ac.1);
+                }
+            }
         }
+        println!("Minified. Time for a new iteration.");
         delta_trans = Layer::from_sorted(new_delta_trans);
     }
 
     println!();
-    let paths: Vec<(u32, u32)> = trans.into_iter().map(|x| x.0).collect();
-    println!("Found {} = {:.2e} paths", paths.len(), paths.len());
-    if DEBUG {
-        println!("paths: {:?}", paths.as_slice());
-    }
-    // TODO: debug-print the layers of our LSM.
+    // The sum of layer sizes should be precisely the # of paths, since we
+    // minify our deltas.
+    println!(
+        "Fixed point reached. {} paths in LSM:",
+        trans.layers().map(|l| l.len()).sum::<usize>(),
+    );
+    trans.debug_dump(" ");
+
+    // // Comment the rest out if you don't care about just getting one big vector.
+    // print!("Merging all paths into one vector... ");
+    // std::io::stdout().flush().unwrap();
+    // let paths: Vec<(u32, u32)> = trans.iter().map(|x| x.0).collect();
+    // println!("done.");
+    // println!("Found {} = {:.2e} paths", paths.len(), paths.len());
+    // if DEBUG {
+    //     println!("paths: {:?}", paths.as_slice());
+    // }
+    // // TODO: debug-print the layers of our LSM.
+
 }
