@@ -77,7 +77,7 @@ where
     pub fn new() -> Self { Layer { elems: Vec::new() } }
 
     pub fn from_sorted(elems: Vec<Pair<K, V>>) -> Self {
-        assert!(elems.is_sorted_by_key(|x| x.key));
+        debug_assert!(elems.is_sorted_by_key(|x| x.key));
         Layer { elems }
     }
 
@@ -165,27 +165,19 @@ impl<A> Default for LSM<A> { fn default() -> Self { LSM::new() } }
 
 // ===== SEEKERATING an LSM =====
 impl<A> LSM<A> {
-    // We might want to ensure our return type is also Clone; it's helpful to be
-    // able to clone Seekerators.
     pub fn seek_with<'a, S, F>(
-        &'a self,                 // <========== IMPORTANT LIFETIME ANNOTATION
+        &'a self,               // <========== IMPORTANT LIFETIME ANNOTATION
         seek_slice: F,
-    ) -> OuterArray<{ MAX_LEVELS }, Option<S>> // annoying Option
+    ) -> OuterArray<{ MAX_LEVELS }, S>
     where
         S: Seek,
-        F: Fn(&'a [A]) -> S, // <========== MATCHING LIFETIME ANNOTATION
+        F: Fn(&'a [A]) -> S,    // <========== MATCHING LIFETIME ANNOTATION
     {
         assert!(self.layers.len() <= MAX_LEVELS);
-        let array: OuterArray<{ MAX_LEVELS }, _> =
-            self.layers
+        self.layers
             .iter()
-            // Some() is an annoying hack to make the iterator type implement
-            // Default, needed for OuterArray::into(). TODO: instead create an
-            // empty layer and manually initialize the rest of the OuterArray
-            // with iterators over it.
-            .map(|layer| Some(seek_slice(layer.elems.as_slice())))
-            .collect();
-        return array
+            .map(|layer| seek_slice(layer.elems.as_slice()))
+            .collect()
     }
 }
 
