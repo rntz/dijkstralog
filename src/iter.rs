@@ -72,6 +72,9 @@ impl<K: Ord + Copy, V> Position<K, V> {
         }
     }
 
+    // This is showing up as somewhat costly in samply runs when I use outer
+    // joins. Maybe the compiler doesn't know how to optimize it? Disassemble it
+    // and examine what's going on.
     pub fn outer_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, OuterPair<V, U>> {
         match self.bound().cmp(&other.bound()) {
             Ordering::Less    => self.map(|v| Left(v)),
