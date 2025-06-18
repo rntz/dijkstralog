@@ -18,8 +18,8 @@ impl<'a, X> Search for &'a [X] {
     #[inline(always)]
     fn search<F: FnMut(&X) -> bool>(&self, test: F) -> usize {
         // ----------> DEFAULT SEARCH FUNCTION CHOICE GOES HERE <----------
-        return careful_gallop(self, test);
-        //return gallop(self, test);
+        //return careful_gallop(self, test);
+        return gallop(self, test);
         //return self.partition_point(test);
     }
 }
