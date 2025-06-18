@@ -14,12 +14,14 @@ pub use Bound::*;
 
 // this could be extended to handle K: PartialOrd but we don't need it
 impl<K: Ord> PartialOrd for Bound<K> {
+    #[inline(always)]
     fn partial_cmp(&self, other: &Bound<K>) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl<K: Ord> Ord for Bound<K> {
+    #[inline(always)]
     fn cmp(&self, other: &Bound<K>) -> Ordering {
         match (self, other) {
             (Init, Init) | (Done, Done) => Ordering::Equal,
@@ -34,6 +36,7 @@ impl<K: Ord> Ord for Bound<K> {
 }
 
 impl<K: Ord> Bound<K> {
+    #[inline(always)]
     pub fn matches(&self, other: K) -> bool { self <= &Atleast(other) }
 }
 
@@ -47,6 +50,7 @@ pub enum Position<K, V> {
 use Position::*;
 
 impl<K: Ord, V> Position<K, V> {
+    #[inline(always)]
     pub fn inner_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, (V,U)> {
         match (self, other) {
             (Have(k, x), Have(k2, y)) if k == k2 => Have(k, (x, y)),
@@ -56,6 +60,7 @@ impl<K: Ord, V> Position<K, V> {
 }
 
 impl<K: Ord, V> Position<K,V> {
+    #[inline(always)]
     pub fn to_bound(self) -> Bound<K> {
         match self {
             Have(k, _) => Atleast(k),
@@ -65,6 +70,7 @@ impl<K: Ord, V> Position<K,V> {
 }
 
 impl<K: Ord + Copy, V> Position<K, V> {
+    #[inline(always)]
     pub fn bound(&self) -> Bound<K> {
         match *self {
             Have(k, _) => Atleast(k),
@@ -75,6 +81,7 @@ impl<K: Ord + Copy, V> Position<K, V> {
     // This is showing up as somewhat costly in samply runs when I use outer
     // joins. Maybe the compiler doesn't know how to optimize it? Disassemble it
     // and examine what's going on.
+    #[inline(always)]
     pub fn outer_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, OuterPair<V, U>> {
         match self.bound().cmp(&other.bound()) {
             Ordering::Less    => self.map(|v| Left(v)),
@@ -88,6 +95,7 @@ impl<K: Ord + Copy, V> Position<K, V> {
 }
 
 impl<K, V> Position<K, V> {
+    #[inline(always)]
     pub fn map<U, F: FnOnce(V) -> U>(self, f: F) -> Position<K, U> {
         match self {
             Know(p) => Know(p),
@@ -95,6 +103,7 @@ impl<K, V> Position<K, V> {
         }
     }
 
+    #[inline(always)]
     pub fn filter_map<U, F>(self, f: F) -> Position<K, U>
     where F: FnOnce(V) -> Option<U> {
         match self {
@@ -159,6 +168,7 @@ pub trait Seek {
     fn keys(self) -> IterKeys<Self> where Self: Sized { IterKeys(self) }
 
     // Like Iterator::next.
+    #[inline(always)]
     fn next(&mut self) -> Option<(Self::Key, Self::Value)> {
         loop {
             match self.posn() {
@@ -186,6 +196,7 @@ pub trait Seek {
     }
 
     // Looks up a particular key, consuming the iterator.
+    #[inline(always)]
     fn lookup(mut self, key: Self::Key) -> Option<Self::Value> where Self: Sized {
         self.seek_to(key)
     }
@@ -201,18 +212,21 @@ pub trait Seek {
 pub struct Iter<S: Seek>(pub S);
 impl<S: Seek> Iterator for Iter<S> {
     type Item = (S::Key, S::Value);
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> { self.0.next() }
 }
 
 pub struct IterKeys<S: Seek>(pub S);
 impl<S: Seek> Iterator for IterKeys<S> {
     type Item = S::Key;
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> { self.0.next().map(|x| x.0) }
 }
 
 pub struct IterValues<S: Seek>(pub S);
 impl<S: Seek> Iterator for IterValues<S> {
     type Item = S::Value;
+    #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> { self.0.next().map(|x| x.1) }
 }
 
@@ -222,6 +236,7 @@ impl<S: Seek> Seek for Option<S> {
     type Key = S::Key;
     type Value = S::Value;
 
+    #[inline(always)]
     fn posn(&self) -> Position<S::Key, S::Value> {
         match self {
             None => Know(Done),
@@ -229,6 +244,7 @@ impl<S: Seek> Seek for Option<S> {
         }
     }
 
+    #[inline(always)]
     fn seek(&mut self, bound: Bound<S::Key>) {
         if let Some(s) = self { s.seek(bound) }
     }
@@ -249,11 +265,13 @@ impl<'a, X: Ord + Copy> Seek for Elements<'a, X> {
     type Key = X;
     type Value = ();
 
+    #[inline(always)]
     fn posn(&self) -> Position<X, ()> {
         if self.index >= self.elems.len() { Know(Done) }
         else { Have(self.elems[self.index], ()) }
     }
 
+    #[inline(always)]
     fn seek(&mut self, target: Bound<X>) {
         self.index += self.elems[self.index..].search(
             |x| !target.matches(*x)
@@ -279,12 +297,14 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Tuples<'a, X, F> {
     type Key = K;
     type Value = &'a X;
 
+    #[inline(always)]
     fn posn(&self) -> Position<K, &'a X> {
         if self.index >= self.elems.len() { return Know(Done) }
         let x = &self.elems[self.index];
         return Have((self.get_key)(x), x);
     }
 
+    #[inline(always)]
     fn seek(&mut self, target: Bound<K>) {
         // TAKE 1: search forward from current position
         self.index += self.elems[self.index..].search(
@@ -330,6 +350,7 @@ where K: Ord + Copy, F: Fn(&X) -> K {
 // TAKE 1: search forward from current position
 impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Ranges<'a, X, F> {
     // adjusts self.index_hi to the end of the region that self.index_lo begins.
+    #[inline(always)]
     fn seek_hi(&mut self) {
         self.index_hi = self.index_lo + if self.index_lo >= self.elems.len() { 0 } else {
             let key = (self.get_key)(&self.elems[self.index_lo]);
@@ -342,6 +363,7 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Ranges<'a, X, F> {
     type Key = K;
     type Value = &'a [X];
 
+    #[inline(always)]
     fn posn(&self) -> Position<K, &'a [X]> {
         if self.index_lo >= self.elems.len() { return Know(Done) }
         debug_assert!(self.index_lo < self.index_hi);
@@ -349,6 +371,7 @@ impl<'a, X, K: Ord + Copy, F: Fn(&X) -> K> Seek for Ranges<'a, X, F> {
         return Have(key, &self.elems[self.index_lo .. self.index_hi]);
     }
 
+    #[inline(always)]
     fn seek(&mut self, target: Bound<K>) {
         let lo = self.index_lo;
         let hi = self.index_hi;
@@ -430,10 +453,14 @@ impl<V, S: Seek, F: Fn(S::Value) -> V> Seek for Map<S, F> {
     type Key = S::Key;
     type Value = V;
 
+    // Marking this posn() & seek() #[inline(always)] seems to speed up
+    // transitive closure.
+    #[inline(always)]
     fn posn(&self) -> Position<S::Key, V> {
         self.iter.posn().map(&self.func)
     }
 
+    #[inline(always)]
     fn seek(&mut self, target: Bound<S::Key>) {
         self.iter.seek(target)
     }
@@ -447,10 +474,11 @@ pub struct FilterMap<S, F> { iter: S, func: F }
 impl<V, S: Seek, F: Fn(S::Value) -> Option<V>> Seek for FilterMap<S, F> {
     type Key = S::Key;
     type Value = V;
+    #[inline(always)]
     fn posn(&self) -> Position<S::Key, V> {
         self.iter.posn().filter_map(&self.func)
     }
-
+    #[inline(always)]
     fn seek(&mut self, target: Bound<S::Key>) {
         self.iter.seek(target)
     }
@@ -485,7 +513,9 @@ impl<K: Ord + Copy, V, F: Fn(K) -> V> TotalFn<K, F> {
 impl<K: Ord + Copy, V, F: Fn(K) -> V> Seek for TotalFn<K, F> {
     type Key = K;
     type Value = V;
+    #[inline(always)]
     fn seek(&mut self, bound: Bound<K>) { self.bound = bound; }
+    #[inline(always)]
     fn posn(&self) -> Position<K, V> {
         match self.bound {
             Atleast(k) => Have(k, (self.func)(k)),
@@ -500,7 +530,9 @@ impl<K: Ord + Copy, V, F: Fn(K) -> Option<V>> PartialFn<K, F> {
 impl<K: Ord + Copy, V, F: Fn(K) -> Option<V>> Seek for PartialFn<K, F> {
     type Key = K;
     type Value = V;
+    #[inline(always)]
     fn seek(&mut self, bound: Bound<K>) { self.bound = bound; }
+    #[inline(always)]
     fn posn(&self) -> Position<K, V> {
         match self.bound {
             Atleast(k) => match (self.func)(k) {
@@ -528,12 +560,14 @@ impl<K, V> Singleton<K, V> {
 impl<K: Ord + Copy, V: Clone> Seek for Singleton<K, V> {
     type Key = K;
     type Value = V;
+    #[inline(always)]
     fn posn(&self) -> Position<K, V> {
         match &self.0 {
             None => Know(Done),
             Some((k, v)) => Have(*k, v.clone()),
         }
     }
+    #[inline(always)]
     fn seek(&mut self, bound: Bound<K>) {
         self.0 = match self.0.take() {
             Some((k,v)) if bound.matches(k) => Some((k,v)),
@@ -546,7 +580,9 @@ impl<K: Ord + Copy, V: Clone> Seek for Singleton<K, V> {
 impl<K: Ord + Copy> Seek for Bound<K> {
     type Key = K;
     type Value = ();
+    #[inline(always)]
     fn seek(&mut self, bound: Bound<K>) { *self = (*self).max(bound); }
+    #[inline(always)]
     fn posn(&self) -> Position<K, ()> {
         match self {
             Atleast(k) => Have(*k, ()),
@@ -566,10 +602,12 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
     type Key   = X::Key;
     type Value = (X::Value, Y::Value);
 
+    #[inline(always)]
     fn posn(&self) -> Position<X::Key, (X::Value, Y::Value)> {
         self.0.posn().inner_join(self.1.posn())
     }
 
+    #[inline(always)]
     fn seek(&mut self, target: Bound<X::Key>) {
         self.0.seek(target);
         self.1.seek(self.0.bound());
@@ -590,10 +628,12 @@ impl<X: Seek, Y:Seek<Key = X::Key>> Seek for OuterJoin<X,Y> {
     type Key   = X::Key;
     type Value = OuterPair<X::Value, Y::Value>;
 
+    #[inline(always)]
     fn posn(&self) -> Position<X::Key, OuterPair<X::Value, Y::Value>> {
         return self.0.posn().outer_join(self.1.posn())
     }
 
+    #[inline(always)]
     fn seek(&mut self, target: Bound<X::Key>) {
         self.0.seek(target);
         self.1.seek(target);
@@ -605,6 +645,7 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterPair<X,Y> {
     type Key   = X::Key;
     type Value = OuterPair<X::Value, Y::Value>;
 
+    #[inline(always)]
     fn posn(&self) -> Position<X::Key, OuterPair<X::Value, Y::Value>> {
         match self {
             Left(xs)    => xs.posn().map(|x| Left(x)),
@@ -613,6 +654,7 @@ impl<X: Seek, Y:Seek<Key=X::Key>> Seek for OuterPair<X,Y> {
         }
     }
 
+    #[inline(always)]
     fn seek(&mut self, target: Bound<X::Key>) {
         match self {
             Left(xs)  =>   xs.seek(target),
@@ -723,6 +765,7 @@ impl<const N: usize, S: Seek> Seek for OuterArray<N, S> {
     type Key = S::Key;
     type Value = OuterArray<N, S::Value>;
 
+    #[inline(always)]
     fn posn(&self) -> Position<S::Key, OuterArray<N, S::Value>> {
         let mut bound: Bound<S::Key> = Done;
         let mut result: Position<S::Key, OuterArray<N, S::Value>> = Know(bound);
@@ -747,6 +790,7 @@ impl<const N: usize, S: Seek> Seek for OuterArray<N, S> {
         return result
     }
 
+    #[inline(always)]
     fn seek(&mut self, target: Bound<S::Key>) {
         for it in self.as_mut_slice() {
             it.seek(target);
