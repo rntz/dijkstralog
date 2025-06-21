@@ -14,8 +14,9 @@ use std::collections::{HashMap, HashSet};
 // total edges in soc-LiveJournal1.txt: 68,993,773
 //const MAX_EDGES: usize = 48;
 //const MAX_EDGES: usize = 20_000;
-const MAX_EDGES: usize = 80_000;
-//const MAX_EDGES: usize = 150_000;
+//const MAX_EDGES: usize = 80_000;
+//const MAX_EDGES: usize = 100_000;
+const MAX_EDGES: usize = 150_000;
 //const MAX_EDGES: usize = 1_000_000; // don't do this.
 //const MAX_EDGES: usize = 100_000_000; // ABSOLUTELY don't do this.
 
@@ -66,10 +67,7 @@ fn main() {
     println!("Generating edge hash index...");
     let mut edge_map: HashMap<u32, Vec<u32>> = HashMap::new();
     for &(a, b) in edges.iter() {
-        match edge_map.get_mut(&a) {
-            Some(v) => v.push(b),
-            None => { edge_map.insert(a, vec![b]); }
-        }
+        edge_map.entry(a).or_default().push(b);
     }
     let edge_map = edge_map;
     println!("done.");
@@ -77,10 +75,7 @@ fn main() {
     println!("Generating reverse edge hash index...");
     let mut rev_edge_map: HashMap<u32, Vec<u32>> = HashMap::new();
     for &(a, b) in edges.iter() {
-        match rev_edge_map.get_mut(&b) {
-            Some(v) => v.push(a),
-            None => { rev_edge_map.insert(b, vec![a]); }
-        }
+        rev_edge_map.entry(b).or_default().push(a);
     }
     let rev_edge_map = rev_edge_map;
     println!("done.");
@@ -102,6 +97,7 @@ fn main() {
     let mut worklist: Vec<(u32, u32)> = edges;
 
     println!("Finding paths...");
+
     while let Some((a, b)) = worklist.pop() {
         if !trans.insert((a,b)) {
             // insert returns false if trans already contained (a,b); no further

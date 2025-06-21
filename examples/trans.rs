@@ -1,48 +1,65 @@
-// Use the SNAP soc-LiveJournal1.txt data set:
+// Use eg the SNAP soc-LiveJournal1.txt data set:
 // https://snap.stanford.edu/data/soc-LiveJournal1.html
 // https://snap.stanford.edu/data/soc-LiveJournal1.txt.gz
+// total edges in soc-LiveJournal1.txt: 68,993,773
+
+use std::io::prelude::*;
 
 use dijkstralog::iter::{Seek, ranges, tuples};
 use dijkstralog::lsm::{LSM, Layer, Key};
 
-use std::fs::File;
-use std::io::prelude::*;
-use std::io::{BufRead, BufReader};
-use std::path::Path;
+// Takes ≤ 3s on my Macbook M1 Pro.
+// Set EDGES environment variable to override; EDGES=all for no limit.
+const DEFAULT_MAX_EDGES: usize = 80_000;
 
-// total edges in soc-LiveJournal1.txt: 68,993,773
-//const MAX_EDGES: usize = 48;
-//const MAX_EDGES: usize = 20_000;
-const MAX_EDGES: usize = 80_000;
-//const MAX_EDGES: usize = 100_000;
-//const MAX_EDGES: usize = 150_000;
-//const MAX_EDGES: usize = 250_000; // ~1min under --release
-//const MAX_EDGES: usize = 1_000_000; // don't do this.
-
-fn load_livejournal() -> Vec<(u32, u32)> {
+fn load_edges() -> Vec<(u32, u32)> {
+    // TODO: use first std::env::args as data file if present
+    use std::fs::File;
+    use std::path::Path;
     let path = Path::new("data/soc-LiveJournal1.txt");
-    let file = BufReader::new(File::open(&path).expect("couldn't open soc-LiveJournal1.txt"));
+    let file = File::open(&path).expect("couldn't open soc-LiveJournal1.txt");
+    use std::env::{var, VarError};
+    let max_edges: Option<usize> = match var("EDGES") {
+        Err(VarError::NotPresent) => Some(DEFAULT_MAX_EDGES), // default
+        Err(VarError::NotUnicode(_)) => panic!("EDGES not valid unicode"),
+        // explicit ways to set "no limit"
+        Ok(s) if s == "all" => None,
+        Ok(s) => Some({
+            let (factor, s) = if let Some(t) = s.strip_suffix("k") {
+                (1_000, t)
+            } else if let Some(t) = s.strip_suffix("M") {
+                (1_000_000, t)
+            } else if let Some(t) = s.strip_suffix("m") {
+                (1_000_000, t)
+            } else {
+                (1, &s[..])
+            };
+            factor * s.parse::<usize>().expect("malformed MAX_EDGES")
+        }),
+    };
+    return load_edges_from(file, max_edges)
+}
 
+fn load_edges_from<R: std::io::Read>(source: R, max_edges: Option<usize>) -> Vec<(u32, u32)> {
+    if let Some(n) = max_edges {
+        println!("Reading at most {n} edges...");
+    } else {
+        println!("Reading all edges...");
+    }
+    use std::io::{BufRead, BufReader};
+    let file = BufReader::new(source);
     let mut edges: Vec<(u32, u32)> = Vec::new();
-
-    println!("Reading edges from soc-LiveJournal1.txt...");
-    let mut n = 0;
     for readline in file.lines() {
         let line = readline.expect("read error");
-        if line.is_empty() { continue; }
-        if line.starts_with('#') { continue; }
-
-        if MAX_EDGES <= n { break }
-        n += 1;
-
+        if line.is_empty() { continue }
+        if line.starts_with('#') { continue }
+        if max_edges.is_some_and(|n| n <= edges.len()) { break }
         let mut elts = line[..].split_whitespace();
         let v: u32 = elts.next().unwrap().parse().expect("malformed src");
         let u: u32 = elts.next().unwrap().parse().expect("malformed dst");
         edges.push((v,u));
     }
-
-    let n_edges = edges.len();
-    print!("{n_edges} edges");
+    print!("{} edges", edges.len());
     std::io::stdout().flush().unwrap();
     if edges.is_sorted() {
         println!(", already sorted");
@@ -51,14 +68,13 @@ fn load_livejournal() -> Vec<(u32, u32)> {
         edges.sort();
         println!("sorted!");
     }
-
     return edges;
 }
 
 const DEBUG: bool = false;
 
 fn main() {
-    let edges: Vec<(u32, u32)> = load_livejournal();
+    let edges: Vec<(u32, u32)> = load_edges();
     let edges = edges.as_slice();
     if DEBUG {
         println!("edges: {:?}", edges);
