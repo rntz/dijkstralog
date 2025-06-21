@@ -18,8 +18,9 @@ impl<'a, X> Search for &'a [X] {
     #[inline(always)]
     fn search<F: FnMut(&X) -> bool>(&self, test: F) -> usize {
         // ----------> DEFAULT SEARCH FUNCTION CHOICE GOES HERE <----------
-        //return careful_gallop(self, test);
-        return gallop(self, test);
+        //return recursive_gallop(self, test);
+        return careful_gallop(self, test);
+        //return gallop(self, test);
         //return self.partition_point(test);
     }
 }
@@ -107,7 +108,7 @@ pub fn careful_gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usiz
             if hi >= n || !test(unsafe { elems.get_unchecked(hi) }) { break }
         }
         // Bail out to binary search after enough iterations.
-        if loopcount > 16 {     // why is this the right magic number?!?!
+        if loopcount > 16 { // why is this the right magic number? why not 3, or 25, or 1000?
             return lo+1 + elems[lo+1 .. hi.min(n)].partition_point(test);
         }
         loopcount += 1;
