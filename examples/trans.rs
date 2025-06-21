@@ -1,13 +1,9 @@
-#![allow(unused_imports, unused_variables, unreachable_code, unused_mut, unused_assignments)]
-
 // Use the SNAP soc-LiveJournal1.txt data set:
 // https://snap.stanford.edu/data/soc-LiveJournal1.html
 // https://snap.stanford.edu/data/soc-LiveJournal1.txt.gz
 
-use dijkstralog::iter;
-use dijkstralog::iter::{Seek, ranges, tuples, Bound};
-use dijkstralog::lsm;
-use dijkstralog::lsm::{LSM, Layer, Pair, Key};
+use dijkstralog::iter::{Seek, ranges, tuples};
+use dijkstralog::lsm::{LSM, Layer, Key};
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -17,9 +13,10 @@ use std::path::Path;
 // total edges in soc-LiveJournal1.txt: 68,993,773
 //const MAX_EDGES: usize = 48;
 //const MAX_EDGES: usize = 20_000;
-//const MAX_EDGES: usize = 80_000;
+const MAX_EDGES: usize = 80_000;
 //const MAX_EDGES: usize = 100_000;
-const MAX_EDGES: usize = 150_000;
+//const MAX_EDGES: usize = 150_000;
+//const MAX_EDGES: usize = 250_000; // ~1min under --release
 //const MAX_EDGES: usize = 1_000_000; // don't do this.
 
 fn load_livejournal() -> Vec<(u32, u32)> {
@@ -73,12 +70,10 @@ fn main() {
     // implemented as
     //
     // Δtrans 0     a b = edge a b
-    // Δtrans (i+1) a b = Δtrans i a b * edge b c
+    // Δtrans (i+1) a c = Δtrans i a b * edge b c
     //  trans (i+1)     = trans i + Δtrans i
 
-    #[allow(unused_mut)]
     let mut trans: LSM<Key<(u32, u32)>> = LSM::new();
-    #[allow(unused_mut)]
     let mut delta_trans: Layer<Key<(u32, u32)>> = Layer::from_sorted(
         edges.iter().map(|&kv| kv.into()).collect()
     );
@@ -98,7 +93,7 @@ fn main() {
         let mut new_paths: Vec<(u32, u32)> = Vec::new();
         dijkstralog::nest! {
             for (a, delta_a) in ranges(delta_trans.as_slice(), |x| x.key.0).iter();
-            for (b, (delta_ab, edges_b)) in tuples(delta_a, |x| x.key.1)
+            for (_b, (_delta_ab, edges_b)) in tuples(delta_a, |x| x.key.1)
                 .join(ranges(edges, |x| x.0))
                 .iter();
             for &(_, c) in edges_b;
@@ -112,14 +107,31 @@ fn main() {
         // This^ consumes delta_trans! implications for evaluation order of full
         // Datalog system?
 
-        // TODO: try optimizing this sort using the fact that new_paths(a,c) is
-        // already sorted on `a`; each `a`-chunk just needs sorting,
-        // deduplicating, & minifying of the `c`s.
+        // This is a trick that it would be slightly annoying to get a Datalog
+        // compiler to do.
+        #[allow(dead_code)]
+        fn sort_new_paths(new_paths: &mut [(u32, u32)]) {
+            debug_assert!(new_paths.is_sorted_by_key(|x| x.0));
+            let mut i = 0;
+            while i < new_paths.len() {
+                let (a, _) = new_paths[i];
+                // Could use galloping search here, might be faster (might not!), but the
+                // cost is completely dominated by sorting.
+                let j = new_paths.partition_point(|x| x.0 <= a);
+                debug_assert!(i < j);
+                debug_assert!(new_paths[j-1].0 == a);
+                new_paths[i..j].sort_by_key(|x| x.1);
+                debug_assert!(new_paths[i..j].is_sorted());
+                i = j;
+            }
+        }
+
         println!("Sorting {} ≈ {:.0e} new paths...", npaths, npaths);
         new_paths.sort();       // <-- THE PLURALITY OF OUR TIME IS SPENT HERE
+        // sort_new_paths(new_paths.as_mut_slice()); // measurably faster but not amazingly so
         println!("Sorted, now deduplicating...");
         new_paths.dedup();      // is this slow?
-        println!("Deduplicated, now minifying...");
+        println!("Deduplicated to {} paths, now minifying...", new_paths.len());
         let mut new_delta_trans: Vec<Key<(u32, u32)>> = Vec::with_capacity(new_paths.len());
         let mut trans_seek = trans.seeker();
         for ac in new_paths {
@@ -139,10 +151,8 @@ fn main() {
     println!();
     // The sum of layer sizes should be precisely the # of paths, since we
     // minify our deltas.
-    println!(
-        "Fixed point reached. {} paths in LSM:",
-        trans.layers().map(|l| l.len()).sum::<usize>(),
-    );
+    let size = trans.layers().map(|l| l.len()).sum::<usize>();
+    println!("Fixed point reached. {} ≈ {:.0e} paths in LSM:", size, size);
     trans.debug_dump(" ");
 
     // // Comment the rest out if you don't care about just getting one big vector.
