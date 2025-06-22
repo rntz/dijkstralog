@@ -11,13 +11,12 @@ impl Add for () {
     fn plus(self, _other: ()) -> () { () }
 }
 
-// The maximum # of levels we can have in a LSM. We need this because Seek outer
-// joins / unions are implemented using fixed-size arrays to avoid heap
-// allocation. We need unions to iterate over an LSM because an LSM is the union
-// of its layers. Currently this can be at most 32 because we use
-// Default::default() to construct our arrays, and Default is only implemented
-// for arrays up to size 32 in Rust's stdlib.
-pub const MAX_LEVELS: usize = 32;
+// The maximum # of levels we can have in a LSM. We need this because Seek outer joins /
+// unions are implemented using fixed-size arrays to avoid heap allocation. We need unions
+// to iterate over an LSM because an LSM is the union of its layers. LSM levels grow as
+// powers of 2, so 48 levels should be enough for 2^48 - 1 tuples at worst, one less than
+// the addressable memory space on x86-64 and arm64 machines.
+pub const MAX_LEVELS: usize = 48;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Pair<K, V> { pub key: K, pub value: V, }
