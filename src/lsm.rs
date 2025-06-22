@@ -11,28 +11,6 @@ impl Add for () {
     fn plus(self, _other: ()) -> () { () }
 }
 
-// NURSERY_MAX_SIZE is the maximum size the smallest LSM layer (the "nursery",
-// or layer 0) can be before we make a new one. We may not always reach this max
-// size, however, because if the nursery is more than 1/2 the size of the next
-// layer up (layer 1), they'll merge and we'll make a new nursery.
-//
-// For example, suppose NURSERY_MAX_SIZE = 64 and imagine inserting items one by
-// one starting from empty. After 64 items we'll promote our first nursery to
-// layer 1 and create a new nursery (= layer 0). Once this second nursery has 64
-// / 2 = 32 elements, it'll merge with layer 1; now layer 1 has 64 + 32 = 96
-// elements. The third nursery grows until it has 96 / 2 = 48 elements, then
-// merges into layer 1 to yield 96 + 48 = 144 elements.
-//
-// Since 144 / 2 = 72 > 64 = NURSERY_MAX_SIZE, once the fourth nursery reaches
-// 64 elements we'll promote it, and we'll have:
-//
-// nursery   0 elements
-// layer 1   64 elements
-// layer 2   144 elements
-//
-// And that's how an LSM is grown!
-const NURSERY_MAX_SIZE: usize = 64;
-
 // The maximum # of levels we can have in a LSM. We need this because Seek outer
 // joins / unions are implemented using fixed-size arrays to avoid heap
 // allocation. We need unions to iterate over an LSM because an LSM is the union
@@ -224,21 +202,6 @@ impl<K, V> LSM<Pair<K, V>> where
 
         println!("Done! result:");
         self.debug_dump("  ");
-    }
-
-    // Equivalent to self.push(Layer { elems: vec![(key, value)] }) but
-    // potentially more efficient. I should probably delete this.
-    pub fn push_one(&mut self, key: K, value: V) {
-        match self.layers.pop_if(|n| n.len() < NURSERY_MAX_SIZE) {
-            Some(mut nursery) => {
-                nursery.push(key, value);
-                self.push(nursery);
-            }
-            // Create a new nursery.
-            None => {
-                self.layers.push(Layer { elems: vec![Pair { key, value }] });
-            }
-        };
     }
 
     pub fn seeker(&self) -> impl Seek<Key = K, Value = V> {
