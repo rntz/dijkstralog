@@ -42,16 +42,14 @@ impl<A> Default for Layer<A> {
 
 impl<A> Layer<A> {
     pub fn as_slice(&self) -> &[A] { self.elems.as_slice() }
-    pub fn len(&self) -> usize { self.elems.len() }
 }
 
-impl<K, V> Layer<Pair<K, V>>
-where
-    K: Copy + Ord,
-    // In principle we don't need Clone here but it makes implementing merge() a
-    // lot easier.
-    V: Clone + Add,
-{
+impl<A> std::ops::Deref for Layer<A> {
+    type Target = [A];
+    fn deref(&self) -> &[A] { self.as_slice() }
+}
+
+impl<K: Copy + Ord, V> Layer<Pair<K, V>> {
     pub fn new() -> Self { Layer { elems: Vec::new() } }
 
     pub fn from_sorted(elems: Vec<Pair<K, V>>) -> Self {
@@ -63,15 +61,9 @@ where
         self.elems.iter()
     }
 
-    pub fn push(&mut self, key: K, value: V) {
-        match self.elems.binary_search_by(|x| x.key.cmp(&key)) {
-            Err(idx) => self.elems.insert(idx, Pair { key, value }),
-            Ok(_) => return,    // already present, do nothing
-        }
-    }
-
-    #[allow(unused_mut)]  // FIXME
-    pub fn merge(mut self, other: Layer<Pair<K, V>>) -> Self {
+    pub fn merge(mut self, other: Layer<Pair<K, V>>) -> Self
+    where V: Add + Clone
+    {
         println!(" merging {} with {}", self.len(), other.len());
 
         // TODO: Instead of using an outer join, implement this manually. Do I get a
@@ -131,7 +123,6 @@ pub struct LSM<A> {
 impl<A> LSM<A> {
     pub fn new() -> Self { LSM { layers: Vec::new() } }
     pub fn layers(&self) -> impl Iterator<Item = &Layer<A>> { self.layers.iter() }
-
     pub fn debug_dump(&self, prefix: &str) {
         for (i, l) in self.layers.iter().rev().enumerate() {
             println!("{prefix}{i}: {} entries", l.len());
