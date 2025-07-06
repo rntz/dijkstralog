@@ -24,6 +24,7 @@
 
 %% Packages & commands
 \usepackage{minted}
+\newcommand\hask[1]{\mintinline{haskell}{#1}}
 
 \newcommand\todo[1]{{\color{Orange}#1}}
 \newcommand\XXX{\todo{XXX}}
@@ -64,7 +65,7 @@ We can fix this by interleaving \texttt{xs} and \texttt{ys} instead:
 \end{minted}
 
 \noindent
-However, this is only complete if all streams involved are \emph{productive,} meaning that evaluation to weak head normal form always yields a constructor (\mintinline{haskell}{Empty} or \mintinline{haskell}{Yield}) without looping indefinitely.
+However, this is only complete if all streams involved are \emph{productive,} meaning that evaluation to weak head normal form always yields a constructor (\hask{Empty} or \hask{Yield}) without looping indefinitely.
 It's easy to define unproductive streams recursively, for instance:
 
 \begin{minted}{haskell}
@@ -76,10 +77,10 @@ It's easy to define unproductive streams recursively, for instance:
 
 \noindent
 Our difficulty is that, ideally, we would like the union of streams to be productive if \emph{any} input stream is.
-Neither concatenation nor interleaving has this property, and in fact, standard programming language evaluation orders (lazy or eager) cannot express fairly interleaving evaluation between two sub-expressions; we must pick one to examine first; if that one is unproductive, further evaluation is blocked.%
-\footnote{The classic example here is ``parallel or'', a hypothetical function \mintinline{haskell}{por :: Bool -> Bool -> Bool} implementing boolean disjunction \emph{fairly,} meaning \mintinline{haskell}{(por True undefined) == (por undefined True) == True}.}
+Neither concatenation nor interleaving has this property, and in fact, standard programming language evaluation orders (whether lazy or eager) cannot express fairly interleaving evaluation between two sub-expressions: we must pick one to examine first; if that one is unproductive, further evaluation is blocked.%
+\footnote{The classic example here is ``parallel or'', a hypothetical function \hask{por :: Bool -> Bool -> Bool} implementing boolean disjunction \emph{fairly,} meaning \hask{(por True undefined) == (por undefined True) == True}.}
 %
-The standard solution, used in e.g.~\textmu{}Kanren~\citep{muKanren}, is to extend \mintinline{haskell}{Stream} with an extra constructor, \mintinline{haskell}{Later},\footnotemark\ which exposes the existence of intermediate evaluation steps without giving any further information:
+The standard solution, used in e.g.~\textmu{}Kanren~\citep{muKanren}, is to extend \hask{Stream} with an extra constructor, \hask{Later},\footnotemark\ which exposes the existence of intermediate evaluation steps without giving any further information:
 
 \begin{minted}{haskell}
   data Stream a = Empty
@@ -88,10 +89,10 @@ The standard solution, used in e.g.~\textmu{}Kanren~\citep{muKanren}, is to exte
 \end{minted}
 
 \noindent
-This makes it easy to ensure \emph{all} definitions are productive: simply guard any recursion with \mintinline{haskell}{Later}.
+This makes it easy to ensure \emph{all} definitions are productive: simply guard any recursion with \hask{Later}.
 \todo{TODO: cite guarded recursion.}
-For instance, if we replace the canonical unproductive recursive definition, \mintinline{haskell}{let xs = xs}, with a guarded one, \mintinline{haskell}{let xs = Later xs}, examining \texttt{xs} will no longer cause an unrecoverable infinite loop; instead it will immediately yield \mintinline{haskell}{Later xs}.
-Thus \mintinline{haskell}{Later} acts as an explicit signal to the consumer, permitting it to switch to evaluating some other stream if it so wishes.
+For instance, if we replace the canonical unproductive recursive definition, \hask{let xs = xs}, with a guarded one, \hask{let xs = Later xs}, examining \texttt{xs} will no longer cause an unrecoverable infinite loop; instead it will immediately yield \hask{Later xs}.
+Thus \hask{Later} acts as an explicit signal to the consumer, permitting it to switch to evaluating some other stream if it so wishes.
 We can use this to implement fairly interleaving stream union (\textmu{}Kanren's \texttt{mplus}):
 
 \footnotetext{In \citet{muKanren} these are ``immature'' streams, represented as procedures of zero arguments.}
@@ -106,7 +107,7 @@ We can use this to implement fairly interleaving stream union (\textmu{}Kanren's
 \end{minted}
 
 \noindent
-As long as we are careful to guard all recursion with \mintinline{haskell}{Later}, we can now define \texttt{theAnswer} completely:
+As long as we are careful to guard all recursion with \hask{Later}, we can now define \texttt{theAnswer} completely:
 
 \begin{minted}{haskell}
   theAnswer :: Stream Int
@@ -116,8 +117,9 @@ As long as we are careful to guard all recursion with \mintinline{haskell}{Later
 \noindent
 \todo{%
   TODO: explain this in terms of \emph{bounded work} instead of \emph{productivity}.
-  Explain that by guarding with \mintinline{haskell}{Later}, we ensure a bounded amount of work is done before we hit a \mintinline{haskell}{Later}.
-  This means that switching only when we see \mintinline{haskell}{Later} is fair, and therefore complete.
+  (For instance, in the absence of any \hask{Later}s, this degenerates to concatenation; we are relying on \hask{Later} for completeness even if all streams are productive.)
+  Explain that by guarding with \hask{Later}, we ensure a bounded amount of work is done before we hit a \hask{Later}.
+  This means that switching only when we see \hask{Later} is fair, and therefore complete.
   Our design recipe, then, is to carefully \emph{bound} the work we do in any given search step, allowing us to \emph{fairly interleave} search steps.
   In minikanren this is used to ensure \emph{completeness.}
   As we're about to see, it can also be used to ensure \emph{performance.}
@@ -165,35 +167,94 @@ To remedy this, we show how to extend the seekable iterator interface to allow \
 %% if we decide to use ``feedback with delay'' to overcome this, we have perhaps reinvented, not miniKanren, but Datalog!
 
 
-\section{Worst-case optimal iteration as bounded, fair conjunction}
+\section{Unfair intersection of seekable iterators}
 
-\todo{Explain the non-fair approach, using an intersection iterator with a seek() method that actually finds the next thing above the given bound.}
+\todo{Explain that intersection of sorted sets is both a special case of, and an ingredient in the implementation of, database joins.}
+
+Let us assume our data is sorted and allows efficiently seeking forward to find the next key-value pair whose key is at least some lower bound (by e.g.\ galloping search).
+We can capture these assumptions in a \emph{seekable iterator} interface:
 
 \begin{minted}{haskell}
   data Iter k v = Empty
                 | Yield k v (k -> Iter k v)
+\end{minted}
 
+\noindent
+A seekable iterator, \hask{Iter k v}, is like a stream of key-value pairs, \hask{Stream (k,v)}, except that (a) it yields pairs in ascending key order, and (b) rather than the \emph{entire} remainder of the stream, \hask{Yield} produces a function \hask{seek :: k -> Iter k v} which seeks forward to its argument; i.e.\ \hask{seek target} iterates over all remaining pairs with keys \texttt{k >= target}.
+%
+To iterate over \emph{all} pairs, we repeatedly \texttt{seek} toward the just-visited key:
+
+\begin{minted}{haskell}
+  toSorted :: Iter k v -> [(k, v)]
+  toSorted Empty = []
+  toSorted (Yield k v seek) = (k,v) : toSorted (seek k)
+\end{minted}
+
+\noindent
+Given a sorted list \hask{[(k, v)]}, we can easily produce a seekable iterator for it, although seeking will not be efficient since Haskell lists allow only linear, in-order access.
+We could use a more appropriate data structure, such as a sorted array or balanced tree, but omit this as it is not crucial to our explanation:
+
+\begin{minted}{haskell}
   fromSorted :: Ord k => [(k, v)] -> Iter k v
   fromSorted [] = Empty
   fromSorted ((k,v) : rest) = Yield k v seek
     where seek k' = fromSorted (dropWhile ((< k') . fst) rest)
+\end{minted}
 
-  toSorted :: Iter k v -> [(k, v)]
-  toSorted Empty = []
-  toSorted (Yield k v s) = (k,v) : toSorted s
+\noindent
+Finally, we can intersect two seekable iterators by leapfrogging: repeatedly advance the iterator at the smaller key towards the higher, until either both iterators reach the same key (an element of the intersection) or one is exhausted (the intersection is empty):
 
+\begin{minted}{haskell}
   intersect :: Ord k => Iter k a -> Iter k b -> Iter k (a,b)
   intersect Empty _ = Empty
   intersect _ Empty = Empty
   intersect s@(Yield k1 x s') t@(Yield k2 y t') =
     case compare k1 k2 of
-      EQ -> Yield k1 (x,y) (intersect s' t')
-      LT -> intersect (s' k2) t
-      GT -> intersect s (t' k1)
+      LT -> intersect (s' k2) t -- s < t, so seek s toward t
+      GT -> intersect s (t' k1) -- t < s, so seek t toward s
+      EQ -> Yield k1 (x,y) (\k' -> intersect (s' k') (t' k'))
 \end{minted}
 
 \noindent
-\todo{Explain how this is unfair, using evens-odds-endpoints example.}
+So far, so good.
+However, \texttt{intersect} is not \emph{fair,} and this causes performance problems.
+
+\noindent
+\todo{Explain how this is unfair, using evens-odds-endpoints example.
+  For this reason, leapfrog intersection is presented as an intrinsically n-ary operation.
+  Can we overcome this limitation?
+}
+
+%% \begin{figure}
+%%   \begin{minted}{haskell}
+%%   data Iter k v = Empty
+%%                 | Yield k v (k -> Iter k v)
+
+%%   fromSorted :: Ord k => [(k, v)] -> Iter k v
+%%   fromSorted [] = Empty
+%%   fromSorted ((k,v) : rest) = Yield k v seek
+%%     where seek k' = fromSorted (dropWhile ((< k') . fst) rest)
+
+%%   toSorted :: Iter k v -> [(k, v)]
+%%   toSorted Empty = []
+%%   toSorted (Yield k v s) = (k,v) : toSorted (s k)
+
+%%   intersect :: Ord k => Iter k a -> Iter k b -> Iter k (a,b)
+%%   intersect Empty _ = Empty
+%%   intersect _ Empty = Empty
+%%   intersect s@(Yield k1 x s') t@(Yield k2 y t') =
+%%     case compare k1 k2 of
+%%       LT -> intersect (s' k2) t -- s < t, so seek s toward t
+%%       GT -> intersect s (t' k1) -- t < s, so seek t toward s
+%%       EQ -> Yield k1 (x,y) (\k' -> s' k' `intersect` t' k')
+%%   \end{minted}
+%%   \caption{Unfair intersection of seekable iterators}
+%%   \label{fig:unfair-iterators}
+%% \end{figure}
+
+
+\section{Fair intersection of seekable iterators}
+%\section{Worst-case optimal iteration as bounded, fair conjunction}
 
 \begin{figure}
   \begin{minted}{haskell}
@@ -242,7 +303,8 @@ To remedy this, we show how to extend the seekable iterator interface to allow \
       s' = seek1 k
       t' = seek2 (bound s') -- leapfrog optimization; could be (seek2 k) instead
   \end{minted}
-  \caption{Worst-case optimal iterators}
+  \caption{Fair intersection of seekable iterators}
+  \label{fig:fair-iterators}
 \end{figure}
 
 
