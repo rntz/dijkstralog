@@ -8,10 +8,25 @@
 %\title{Worst-case optimal joins as fair conjunctions}
 \title{Fair, bounded, worst-case optimal joins}
 
+\author{Michael Arntzenius}
+\email{rntz@berkeley.edu}
+\orcid{0009-0002-2234-2549}
+\affiliation{%
+	\institution{UC Berkeley}
+	\city{Berkeley}
+	\state{CA}
+	\country{USA}
+}
+
 \bibliographystyle{ACM-Reference-Format}
 \citestyle{acmauthoryear}
 
+
+%% Packages & commands
+\usepackage{minted}
+
 \newcommand\todo[1]{{\color{Orange}#1}}
+\newcommand\XXX{\todo{XXX}}
 
 
 \begin{document}
@@ -19,56 +34,216 @@
 \begin{abstract}
   {miniKanren}'s key semantic advance over Prolog is to implement a complete yet efficient search strategy, fairly interleaving execution between disjuncts.
   This fairness is accomplished by bounding how much work is done exploring one disjunct before switching to the next.
-  We show that the same two ideas -- fairness and boundedness -- underly an elegant approach to implementing \emph{worst case optimal joins} using a seekable iterator interface, suitable for shallow embedding in functional languages.
+  We show that the idea -- fairness via bounded work -- underlies an elegant compositional approach to implementing worst-case optimal joins using a seekable iterator interface, suitable for shallow embedding in functional languages.
 \end{abstract}
 
 \maketitle
 
-If there are multiple rules which could prove a goal, Prolog tries them in order, exploring each to exhaustion before starting the next.
-If one disjunct fails to terminate, later disjuncts are not visited, and any potential solutions they could have generated are lost.
-We might blame this on Prolog doing \emph{depth-first} search, which can get ``trapped'' in an infinite subtree and fail to return to explore its siblings.
-However, an overly na\"ive attempt to fix this using breadth-first search will also fail
+\section{Fair, bounded disjunction}
+
+If there are multiple rules applicable to the current goal, Prolog tries them in order, exploring each to exhaustion before starting the next.
+If exploring a rule fails to terminate, later rules are not visited, and any potential solutions they could have generated are lost.
+%We might blame this on Prolog doing \emph{depth-first} search, which can get ``trapped'' exploring an infinite subtree and fail to return to explore its siblings.
+If we think of goal-directed search as yielding a stream of solutions, Prolog implements disjunction (between multiple rules) as stream concatenation.
+In Haskell, taking advantage of laziness to represent possibly-infinite streams, we might implement this like so:
+
+\begin{minted}{haskell}
+  data Stream a = Empty
+                | Yield a (Stream a)
+  append Empty        ys = ys
+  append (Yield x xs) ys = Yield x (append xs ys)         -- keep focus on xs
+\end{minted}
+
+\noindent
+As we've hinted, stream concatenation is an incomplete search strategy: \texttt{append xs ys} will never visit \texttt{ys} if \texttt{xs} is infinite.
+We can fix this by interleaving \texttt{xs} and \texttt{ys} instead:
+
+\begin{minted}{haskell}
+  interleave Empty        ys = ys
+  interleave (Yield x xs) ys = Yield x (interleave ys xs) -- swap focus to ys
+\end{minted}
+
+\noindent
+However, this is only complete if all streams involved are \emph{productive,} meaning that evaluation to weak head normal form always yields a constructor (\mintinline{haskell}{Empty} or \mintinline{haskell}{Yield}) without looping indefinitely.
+It's easy to define unproductive streams recursively, for instance:
+
+\begin{minted}{haskell}
+  theAnswer :: Stream Int
+  theAnswer = interleave theAnswer (Yield 42 Empty)
+\end{minted}
+
+%% TODO: explain semantics, xs = xs ∪ {42}. Usual semantics is xs is the least set satisfying this, so xs = {42}; but *whatever* xs is, we definitely have 42 ∈ xs since 42 ∈ {42} ⇒ 42 ∈ xs ∪ {42} ⇒ 42 ∈ xs. But our approach here won't discover that; so it's not complete.
+
+\noindent
+Our difficulty is that, ideally, we would like the union of streams to be productive if \emph{any} input stream is.
+Neither concatenation nor interleaving has this property, and in fact, standard programming language evaluation orders (lazy or eager) cannot express fairly interleaving evaluation between two sub-expressions; we must pick one to examine first; if that one is unproductive, further evaluation is blocked.%
+\footnote{The classic example here is ``parallel or'', a hypothetical function \mintinline{haskell}{por :: Bool -> Bool -> Bool} implementing boolean disjunction \emph{fairly,} meaning \mintinline{haskell}{(por True undefined) == (por undefined True) == True}.}
+%
+The standard solution, used in e.g.~\textmu{}Kanren~\citep{muKanren}, is to extend \mintinline{haskell}{Stream} with an extra constructor, \mintinline{haskell}{Later},\footnotemark\ which exposes the existence of intermediate evaluation steps without giving any further information:
+
+\begin{minted}{haskell}
+  data Stream a = Empty
+                | Yield a (Stream a)
+                | Later   (Stream a)
+\end{minted}
+
+\noindent
+This makes it easy to ensure \emph{all} definitions are productive: simply guard any recursion with \mintinline{haskell}{Later}.
+\todo{TODO: cite guarded recursion.}
+For instance, if we replace the canonical unproductive recursive definition, \mintinline{haskell}{let xs = xs}, with a guarded one, \mintinline{haskell}{let xs = Later xs}, examining \texttt{xs} will no longer cause an unrecoverable infinite loop; instead it will immediately yield \mintinline{haskell}{Later xs}.
+Thus \mintinline{haskell}{Later} acts as an explicit signal to the consumer, permitting it to switch to evaluating some other stream if it so wishes.
+We can use this to implement fairly interleaving stream union (\textmu{}Kanren's \texttt{mplus}):
+
+\footnotetext{In \citet{muKanren} these are ``immature'' streams, represented as procedures of zero arguments.}
+
+\begin{minted}{haskell}
+  data Stream a = Empty
+                | Yield a (Stream a)
+                | Later   (Stream a)
+  union Empty        ys = ys
+  union (Yield x xs) ys = Yield x (union xs ys)  -- keep focus on xs
+  union (Later xs)   ys = Later   (union ys xs)  -- swap focus to ys
+\end{minted}
+
+\noindent
+As long as we are careful to guard all recursion with \mintinline{haskell}{Later}, we can now define \texttt{theAnswer} completely:
+
+\begin{minted}{haskell}
+  theAnswer :: Stream Int
+  theAnswer = union (Later theAnswer) (Yield 42 Empty)
+\end{minted}
+
+\noindent
+\todo{%
+  TODO: explain this in terms of \emph{bounded work} instead of \emph{productivity}.
+  Explain that by guarding with \mintinline{haskell}{Later}, we ensure a bounded amount of work is done before we hit a \mintinline{haskell}{Later}.
+  This means that switching only when we see \mintinline{haskell}{Later} is fair, and therefore complete.
+  Our design recipe, then, is to carefully \emph{bound} the work we do in any given search step, allowing us to \emph{fairly interleave} search steps.
+  In minikanren this is used to ensure \emph{completeness.}
+  As we're about to see, it can also be used to ensure \emph{performance.}
+}
 
 %% X and Y
 %% --> evaluate X, it becomes (X1 : Xrest)
 %% --> Y[X1] or (Xrest and Y)
 
-miniKanren extends the obvious ``stream'' interface (cons, nil) with an extra constructor (delay) to allow \emph{bounded interleaving}.
-
 In this paper, we show how to apply a similar trick, but for \emph{conjunctive} queries -- in particular, database joins.
-We will take a seekable iterator interface, as used in Leapfrog Triejoin~\citep{lftj}, and show that it is not
+We will take the implementation of \emph{leapfrog intersection of seekable iterators} used in the worst-case optimal join algorithm Leapfrog Triejoin~\citep{lftj}, and show that it is \emph{not} fair.
+To remedy this, we show how to extend the seekable iterator interface to allow \emph{bounded interleaving} between sub-iterators.
 
-\todo{TODO SKETCH BELOW}
-
-miniKanren's key idea over Prolog is to have a complete search strategy by using a FAIR strategy for disjunctions.
-We accomplish this by BOUNDING the time we spend in each disjunct before switching to the other.
-
-FAIR: no branch gets ``starved'' by another branch; with enough time, we investigate all branches arbitrarily far.
-
-BOUNDED: we try a branch for only a bounded amount of time, so that we don't get STUCK. This is the purpose of the ``thunk'' constructor for streams (what's the standard name for this in mK?).
-
-Two uses of fairness:
-
-1. Implementing $\lambda_{\vee}$.
-   semantics are nondeterministic,
-   so SEARCH!
-
-   This search is inefficient because it fails to take into account the *monotonic structure* of evaluation in lambda join: we are in essence branching on *how precise* to make our evaluation.
-   The branching is not between mutually exclusive alternatives, where each contributes information the other lacks, but where one alternative has strictly more information than another.
-
-   (how does this actually result in combinatorial explosion, though?)
-
-2. Work in progress on a seekable iterator interface for compositionally worst-case optimal joins.
-   The key idea is to FAIRLY incorporate information from all iterators contributing to the join,
-   which we do by BOUNDING how much work we put into one iterator before moving to the next.
-
-   This implements FAIR CONJUNCTION, and it's FAST.
-
-   But it takes advantage of having a comprehensive view of data, so we can scan through it in sorted order - we can't define these things recursively, therefore it can't be turing-complete.
-if we decide to use ``feedback with delay'' to overcome this, we have perhaps reinvented, not miniKanren, but Datalog!
+\todo{TODO: cite indexed streams as well}
 
 
-\section{Worst case optimal iteration as bounded, fair conjunction}
+%% \section{sketches}
+%% \todo{TODO SKETCHES}
+
+%% miniKanren's key idea over Prolog is to have a complete search strategy by using a FAIR strategy for disjunctions.
+%% We accomplish this by BOUNDING the time we spend in each disjunct before switching to the other.
+
+%% FAIR: no branch gets ``starved'' by another branch; with enough time, we investigate all branches arbitrarily far.
+
+%% BOUNDED: we try a branch for only a bounded amount of time, so that we don't get STUCK. This is the purpose of the ``thunk'' constructor for streams (what's the standard name for this in mK?).
+
+%% Two uses of fairness:
+
+%% 1. Implementing $\lambda_{\vee}$.
+%%    semantics are nondeterministic,
+%%    so SEARCH!
+
+%%    This search is inefficient because it fails to take into account the *monotonic structure* of evaluation in lambda join: we are in essence branching on *how precise* to make our evaluation.
+%%    The branching is not between mutually exclusive alternatives, where each contributes information the other lacks, but where one alternative has strictly more information than another.
+
+%%    (how does this actually result in combinatorial explosion, though?)
+
+%% 2. Work in progress on a seekable iterator interface for compositionally worst-case optimal joins.
+%%    The key idea is to FAIRLY incorporate information from all iterators contributing to the join,
+%%    which we do by BOUNDING how much work we put into one iterator before moving to the next.
+
+%%    This implements FAIR CONJUNCTION, and it's FAST.
+
+%%    But it takes advantage of having a comprehensive view of data, so we can scan through it in sorted order - we can't define these things recursively, therefore it can't be turing-complete.
+%% if we decide to use ``feedback with delay'' to overcome this, we have perhaps reinvented, not miniKanren, but Datalog!
+
+
+\section{Worst-case optimal iteration as bounded, fair conjunction}
+
+\todo{Explain the non-fair approach, using an intersection iterator with a seek() method that actually finds the next thing above the given bound.}
+
+\begin{minted}{haskell}
+  data Iter k v = Empty
+                | Yield k v (k -> Iter k v)
+
+  fromSorted :: Ord k => [(k, v)] -> Iter k v
+  fromSorted [] = Empty
+  fromSorted ((k,v) : rest) = Yield k v seek
+    where seek k' = fromSorted (dropWhile ((< k') . fst) rest)
+
+  toSorted :: Iter k v -> [(k, v)]
+  toSorted Empty = []
+  toSorted (Yield k v s) = (k,v) : toSorted s
+
+  intersect :: Ord k => Iter k a -> Iter k b -> Iter k (a,b)
+  intersect Empty _ = Empty
+  intersect _ Empty = Empty
+  intersect s@(Yield k1 x s') t@(Yield k2 y t') =
+    case compare k1 k2 of
+      EQ -> Yield k1 (x,y) (intersect s' t')
+      LT -> intersect (s' k2) t
+      GT -> intersect s (t' k1)
+\end{minted}
+
+\noindent
+\todo{Explain how this is unfair, using evens-odds-endpoints example.}
+
+\begin{figure}
+  \begin{minted}{haskell}
+  data Bound k
+    = Init             -- anything satisfies this bound
+    | Atleast k        -- is it >= k?
+    | Greater k        -- is it  > k?
+    | Done             -- nothing satisfies this bound
+    deriving Eq
+
+  data Position k v
+    = Found k v        -- here's a key and its value
+    | Bound (Bound k)  -- the next key satisfies this bound
+
+  data Seek k v = Seek
+    { posn :: Position k v          -- a key-value pair, or a bound
+    , seek :: Bound k -> Seek k v } -- seeks forward toward a bound
+
+  -- Init < ... < Atleast n < Greater n < Atleast (n+1) < ... < Done
+  instance Ord k => Ord (Bound k) where
+    compare x y = embed x `compare` embed y
+      where embed Init        = (0, Nothing)
+            embed (Atleast k) = (1, Just (k, 0))
+            embed (Greater k) = (1, Just (k, 1))
+            embed Done        = (2, Nothing)
+
+  bound :: Seek k v -> Bound k
+  bound (Seek (Found k v) _) = Atleast k
+  bound (Seek (Bound p)   _) = p
+
+  fromSorted :: Ord k => [(k, v)] -> Iter k v
+  fromSorted l = Iter posn seek where
+    posn = case l of [] -> Bound Done; (k,v):_ -> Found k v
+    seek target = fromSorted $ dropWhile ((target >) . Atleast . fst) l
+
+  toSorted :: Iter k v -> [(k, v)]
+  toSorted (Iter (Bound Done) _)    = []
+  toSorted (Iter (Found k v)  seek) = (k, v) : toSorted (seek (Greater k))
+  toSorted (Iter (Bound k)    seek) = toSorted (seek k)
+
+  intersect :: Ord k => Seek k a -> Seek k b -> Seek k (a,b)
+  intersect s t = Seek posn' seek' where
+    posn' | Found k x <- posn s, Found k' y <- posn t, k == k' = Found k (x, y)
+          | otherwise = Bound (bound s `max` bound t)
+    seek' k = intersect s' t' where
+      s' = seek1 k
+      t' = seek2 (bound s') -- leapfrog optimization; could be (seek2 k) instead
+  \end{minted}
+  \caption{Worst-case optimal iterators}
+\end{figure}
 
 
 %% ---------- BIBLIOGRAPHY ----------
