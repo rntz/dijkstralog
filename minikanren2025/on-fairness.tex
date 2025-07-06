@@ -1,0 +1,77 @@
+\documentclass[acmsmall,screen,review,anonymous,dvipsnames]{acmart}
+
+%\title{Monotonic, Bounded, Fair}
+%% GEB: EGB reference how?
+%\subtitle{miniKanren's power as inspiration; its limits as implementation}
+%\subtitle{The power of miniKanren as inspiration; the limitations of miniKanren as implementation}
+
+%\title{Worst-case optimal joins as fair conjunctions}
+\title{Fair, bounded, worst-case optimal joins}
+
+\bibliographystyle{ACM-Reference-Format}
+\citestyle{acmauthoryear}
+
+\newcommand\todo[1]{{\color{Orange}#1}}
+
+
+\begin{document}
+
+\begin{abstract}
+  {miniKanren}'s key semantic advance over Prolog is to implement a complete yet efficient search strategy, fairly interleaving execution between disjuncts.
+  This fairness is accomplished by bounding how much work is done exploring one disjunct before switching to the next.
+  We show that the same two ideas -- fairness and boundedness -- underly an elegant approach to implementing \emph{worst case optimal joins} using a seekable iterator interface, suitable for shallow embedding in functional languages.
+\end{abstract}
+
+\maketitle
+
+If there are multiple rules which could prove a goal, Prolog tries them in order, exploring each to exhaustion before starting the next.
+If one disjunct fails to terminate, later disjuncts are not visited, and any potential solutions they could have generated are lost.
+We might blame this on Prolog doing \emph{depth-first} search, which can get ``trapped'' in an infinite subtree and fail to return to explore its siblings.
+However, an overly na\"ive attempt to fix this using breadth-first search will also fail
+
+%% X and Y
+%% --> evaluate X, it becomes (X1 : Xrest)
+%% --> Y[X1] or (Xrest and Y)
+
+miniKanren extends the obvious ``stream'' interface (cons, nil) with an extra constructor (delay) to allow \emph{bounded interleaving}.
+
+In this paper, we show how to apply a similar trick, but for \emph{conjunctive} queries -- in particular, database joins.
+We will take a seekable iterator interface, as used in Leapfrog Triejoin~\citep{lftj}, and show that it is not
+
+\todo{TODO SKETCH BELOW}
+
+miniKanren's key idea over Prolog is to have a complete search strategy by using a FAIR strategy for disjunctions.
+We accomplish this by BOUNDING the time we spend in each disjunct before switching to the other.
+
+FAIR: no branch gets ``starved'' by another branch; with enough time, we investigate all branches arbitrarily far.
+
+BOUNDED: we try a branch for only a bounded amount of time, so that we don't get STUCK. This is the purpose of the ``thunk'' constructor for streams (what's the standard name for this in mK?).
+
+Two uses of fairness:
+
+1. Implementing $\lambda_{\vee}$.
+   semantics are nondeterministic,
+   so SEARCH!
+
+   This search is inefficient because it fails to take into account the *monotonic structure* of evaluation in lambda join: we are in essence branching on *how precise* to make our evaluation.
+   The branching is not between mutually exclusive alternatives, where each contributes information the other lacks, but where one alternative has strictly more information than another.
+
+   (how does this actually result in combinatorial explosion, though?)
+
+2. Work in progress on a seekable iterator interface for compositionally worst-case optimal joins.
+   The key idea is to FAIRLY incorporate information from all iterators contributing to the join,
+   which we do by BOUNDING how much work we put into one iterator before moving to the next.
+
+   This implements FAIR CONJUNCTION, and it's FAST.
+
+   But it takes advantage of having a comprehensive view of data, so we can scan through it in sorted order - we can't define these things recursively, therefore it can't be turing-complete.
+if we decide to use ``feedback with delay'' to overcome this, we have perhaps reinvented, not miniKanren, but Datalog!
+
+
+\section{Worst case optimal iteration as bounded, fair conjunction}
+
+
+%% ---------- BIBLIOGRAPHY ----------
+\bibliography{on-fairness}
+
+\end{document}
