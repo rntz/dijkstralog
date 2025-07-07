@@ -24,6 +24,64 @@
 \citestyle{acmauthoryear}
 
 
+%% ACM keywords & CCS concepts
+\keywords{miniKanren, seekable iterators, fair intersection, fair conjunction, worst-case optimal joins}
+
+\begin{CCSXML}
+<ccs2012>
+   <concept>
+       <concept_id>10003752.10010070.10010111.10010113</concept_id>
+       <concept_desc>Theory of computation~Database query languages (principles)</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10003752.10010070.10010111.10011711</concept_id>
+       <concept_desc>Theory of computation~Database query processing and optimization (theory)</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10003752.10010070.10010111.10011734</concept_id>
+       <concept_desc>Theory of computation~Logic and databases</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10003752.10010070.10010111.10011710</concept_id>
+       <concept_desc>Theory of computation~Data structures and algorithms for data management</concept_desc>
+       <concept_significance>300</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10003752.10003809.10011254</concept_id>
+       <concept_desc>Theory of computation~Algorithm design techniques</concept_desc>
+       <concept_significance>300</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10003752.10003809.10010031.10010033</concept_id>
+       <concept_desc>Theory of computation~Sorting and searching</concept_desc>
+       <concept_significance>300</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10003752.10010124.10010125.10010127</concept_id>
+       <concept_desc>Theory of computation~Functional constructs</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10010147.10010148.10010149.10010157</concept_id>
+       <concept_desc>Computing methodologies~Equation and inequality solving algorithms</concept_desc>
+       <concept_significance>100</concept_significance>
+       </concept>
+ </ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Theory of computation~Database query languages (principles)}
+\ccsdesc[500]{Theory of computation~Database query processing and optimization (theory)}
+\ccsdesc[500]{Theory of computation~Logic and databases}
+\ccsdesc[300]{Theory of computation~Data structures and algorithms for data management}
+\ccsdesc[300]{Theory of computation~Algorithm design techniques}
+\ccsdesc[300]{Theory of computation~Sorting and searching}
+\ccsdesc[500]{Theory of computation~Functional constructs}
+\ccsdesc[100]{Computing methodologies~Equation and inequality solving algorithms}
+
+
 %% Packages & commands
 \usepackage{minted}
 \setminted{
@@ -127,7 +185,7 @@ As long as we are careful to guard all recursion with \hask{Later}, we can now d
 \begin{minted}{haskell}
 theAnswer :: Stream Int
 theAnswer = union (Later theAnswer) (Yield 42 Empty)
--- Equivalent to an infinite stream of interleaved Later & Yield 42:
+-- Equivalent to infinitely interleaving ‘Later’ and ‘Yield 42’:
 -- theAnswer = Later (Yield 42 theAnswer)
 \end{minted}
 
@@ -234,7 +292,7 @@ intersect s@(Yield k1 x s') t@(Yield k2 y t') =
 
 \noindent
 So far, so good.
-However, \ttt{intersect} is not \emph{fair,} and this can cause performance to suffer asymptotically when intersecting more than two iterators.
+However, \ttt{intersect}'s performance can suffer asymptotically when intersecting more than two iterators.
 For instance, consider three subsets of the integers between 0 and 7,777,777 --- the evens, the odds, and the endpoints:
 
 \begin{minted}{haskell}
@@ -245,7 +303,7 @@ ends  = fromSorted [(x, "end")  | x <- [0,      7_777_777]]
 
 \noindent
 The intersection of \ttt{evens} and \ttt{odds}, and therefore of all three sets, is empty.
-We can compute this using \ttt{intersect}, but performance is \emph{dramatically} better if we avoid intersecting \ttt{evens} and \ttt{odds} directly by intersecting with \ttt{ends} first.
+We can compute this using \ttt{intersect}, but performance is \emph{dramatically} better if we avoid intersecting \ttt{evens} and \ttt{odds} directly by intersecting one of them with \ttt{ends} first.
 At the GHCi repl:
 
 \begin{minted}{haskell}
@@ -260,107 +318,80 @@ ghci> toSorted (evens `intersect` (odds `intersect` ends))
 \end{minted}
 
 \noindent
-The reason is simple: ``leapfrogging'' \ttt{evens} and \ttt{odds} against one another alternates between each relation until both are exhausted; whatever our current key $x$ in \ttt{even} (e.g.\ $x = 1$), we seek forward past $x$ in \ttt{odds} and reach $x+1$; then we seek past $x+1$ in \ttt{even} to $x + 2$, and so on.
-We must do 7,777,777 units of work before we can determine that the intersection is empty.
+The reason is simple: ``leapfrogging'' \ttt{evens} and \ttt{odds} against one another performs a full linear scan of both lists.
+Whatever our current key $x$ in \ttt{even} (e.g.\ $x = 1$), we seek forward past $x$ in \ttt{odds} and reach $x+1$; then we seek past $x+1$ in \ttt{even} to $x + 2$, and so on.
+We do 7,777,777 units of work before we determine the intersection is empty.
 %
-By contrast, intersecting \ttt{odds} with \ttt{ends} will almost immediately skip to the end of both relations.
+By contrast, intersecting \ttt{odds} with \ttt{ends} almost immediately skips to the end of both relations.
 (This occurs even though we are \emph{not} materializing any intermediate results.)%
 \footnotemark{}
 
 \footnotetext{
-  We are telling a white lie here: because we are using Haskell lists, in which seeking is linear-time, there is no \emph{asymptotic} slow-down in this particular example; we are instead observing the difference between an \emph{interpreted} inner loop (\ttt{intersect}, loaded at the GHCi repl) and a \emph{compiled} one (\ttt{dropWhile} from the standard library).
-  But had we used sorted arrays with binary or galloping search, or balanced trees, there would be a genuine asymptotic speed-up, for the reasons we describe.
+  We are telling a white lie here: because we use Haskell lists, seeking is linear-time, and there is no asymptotic slow-down; we are instead observing the difference between an \emph{interpreted} inner loop (\ttt{intersect}, loaded at the GHCi repl) and a \emph{compiled} one (\ttt{dropWhile} from the standard library).
+  However, had we used sorted arrays with binary or galloping search, or balanced trees, there would be a true asymptotic speed-up for the reasons we describe.
 }
 
 The trouble, of course, is that \ttt{intersect} does not (and, with our current \hask{Iter} interface, \emph{cannot}) fairly interleave work between its subiterators.
 Instead, like \ttt{interleave}, it blocks first on one, then the other.
-For precisely this reason leapfrog intersection is usually formulated as an $n$-way operation (e.g.\ in \citet{lftj}). \XXX
-
-\todo{cleanup this para.}
-We have failed to capture in a compositional way the essence of leapfrog intersection, which is \emph{to communicate lower bounds on keys between the intersected iterators.}
+For precisely this reason leapfrog intersection is usually formulated as an $n$-way operation (e.g.\ in \citet{lftj}).
+Our binary approach fails to capture in a compositional way the essence of leapfrog intersection, which is \emph{to communicate lower bounds on keys between the intersected iterators.}
 When intersecting two iterators, we propagate information back and forth between them: the key we find in the first becomes our target in the second, and vice versa.
 But in \ttt{(evens `intersect` odds) `intersect` ends}, before communicating any information to or from \ttt{ends}, we first block waiting for \ttt{evens `intersect` odds} to find a key, which takes $O(n)$ work (where $n$ is the size of \ttt{evens}/\ttt{odds}).
 This prevents useful information exchange between \ttt{ends} and \ttt{evens}/\ttt{odds}, which would let us skip this work and jump straight to the end in $O(1)$ time.
-\noindent
-\todo{Can we overcome this limitation?}
 
-%% \begin{figure}
-%%   \begin{minted}{haskell}
-%%   data Iter k v = Empty
-%%                 | Yield k v (k -> Iter k v)
-
-%%   fromSorted :: Ord k => [(k, v)] -> Iter k v
-%%   fromSorted [] = Empty
-%%   fromSorted ((k,v) : rest) = Yield k v seek
-%%     where seek k' = fromSorted (dropWhile ((< k') . fst) rest)
-
-%%   toSorted :: Iter k v -> [(k, v)]
-%%   toSorted Empty = []
-%%   toSorted (Yield k v s) = (k,v) : toSorted (s k)
-
-%%   intersect :: Ord k => Iter k a -> Iter k b -> Iter k (a,b)
-%%   intersect Empty _ = Empty
-%%   intersect _ Empty = Empty
-%%   intersect s@(Yield k1 x s') t@(Yield k2 y t') =
-%%     case compare k1 k2 of
-%%       LT -> intersect (s' k2) t -- s < t, so seek s toward t
-%%       GT -> intersect s (t' k1) -- t < s, so seek t toward s
-%%       EQ -> Yield k1 (x,y) (\k' -> s' k' `intersect` t' k')
-%%   \end{minted}
-%%   \caption{Unfair intersection of seekable iterators}
-%%   \label{fig:unfair-iterators}
-%% \end{figure}
+However, all is not lost, nor do we need to move to an $n$-way intersection primitive.
+As with stream union, we can overcome this limitation by changing our interface to allow bounded interleaving.
 
 
 \section{Fair intersection of seekable iterators}
 %\section{Worst-case optimal iteration as bounded, fair conjunction}
 
 \begin{figure}
-  \begin{minted}{haskell}
-  data Bound k
-    = Init             -- anything satisfies this bound
-    | Atleast k        -- is it >= k?
-    | Greater k        -- is it  > k?
-    | Done             -- nothing satisfies this bound
-    deriving Eq
+  \begin{minted}[xleftmargin=0em, linenos]{haskell}
+data Bound k
+  = Init             -- anything satisfies Init
+  | Atleast k        -- is it >= k?
+  | Greater k        -- is it  > k?
+  | Done             -- nothing satisfies Done
+  deriving Eq
 
-  data Position k v
-    = Found k v        -- here's a key and its value
-    | Bound (Bound k)  -- the next key satisfies this bound
+data Position k v
+  = Found k v        -- here's a key and its value
+  | Bound (Bound k)  -- the next key satisfies this bound
 
-  data Seek k v = Seek
-    { posn :: Position k v          -- a key-value pair, or a bound
-    , seek :: Bound k -> Seek k v } -- seeks forward toward a bound
+data Seek k v = Seek
+  { posn :: Position k v          -- a key-value pair, or a bound
+  , seek :: Bound k -> Seek k v } -- seeks forward toward a bound
 
-  -- Init < ... < Atleast n < Greater n < Atleast (n+1) < ... < Done
-  instance Ord k => Ord (Bound k) where
-    compare x y = embed x `compare` embed y
-      where embed Init        = (0, Nothing)
-            embed (Atleast k) = (1, Just (k, 0))
-            embed (Greater k) = (1, Just (k, 1))
-            embed Done        = (2, Nothing)
+-- Init < ... < Atleast n < Greater n < Atleast (n+1) < ... < Done
+instance Ord k => Ord (Bound k) where
+  compare x y = embed x `compare` embed y
+    where embed Init        = (0, Nothing)
+          embed (Atleast k) = (1, Just (k, 0))
+          embed (Greater k) = (1, Just (k, 1))
+          embed Done        = (2, Nothing)
 
-  bound :: Seek k v -> Bound k
-  bound (Seek (Found k v) _) = Atleast k
-  bound (Seek (Bound p)   _) = p
+bound :: Seek k v -> Bound k
+bound (Seek (Found k v) _) = Atleast k
+bound (Seek (Bound p)   _) = p
 
-  fromSorted :: Ord k => [(k, v)] -> Iter k v
-  fromSorted l = Iter posn seek where
-    posn = case l of [] -> Bound Done; (k,v):_ -> Found k v
-    seek target = fromSorted $ dropWhile ((target >) . Atleast . fst) l
+fromSorted :: Ord k => [(k, v)] -> Iter k v
+fromSorted l = Iter posn seek where
+  posn = case l of [] -> Bound Done; (k,v):_ -> Found k v
+  seek target = fromSorted $ dropWhile ((target >) . Atleast . fst) l
 
-  toSorted :: Iter k v -> [(k, v)]
-  toSorted (Iter (Bound Done) _)    = []
-  toSorted (Iter (Found k v)  seek) = (k, v) : toSorted (seek (Greater k))
-  toSorted (Iter (Bound k)    seek) = toSorted (seek k)
+toSorted :: Iter k v -> [(k, v)]
+toSorted (Iter (Bound Done) _)    = []
+toSorted (Iter (Found k v)  seek) = (k, v) : toSorted (seek (Greater k))
+toSorted (Iter (Bound k)    seek) = toSorted (seek k)
 
-  intersect :: Ord k => Seek k a -> Seek k b -> Seek k (a,b)
-  intersect s t = Seek posn' seek' where
-    posn' | Found k x <- posn s, Found k' y <- posn t, k == k' = Found k (x, y)
-          | otherwise = Bound (bound s `max` bound t)
-    seek' k = intersect s' t' where
-      s' = seek1 k
-      t' = seek2 (bound s') -- leapfrog optimization; could be (seek2 k) instead
+intersect :: Ord k => Seek k a -> Seek k b -> Seek k (a,b)
+intersect s t = Seek posn' seek' where
+  posn' | Found k x <- posn s, Found k' y <- posn t, k == k' = Found k (x, y)
+        | otherwise = Bound (bound s `max` bound t)
+  seek' k = intersect s' t' where
+    s' = seek1 k
+    t' = seek2 (bound s') -- leapfrog optimization; could be (seek2 k) instead
   \end{minted}
   \caption{Fair intersection of seekable iterators}
   \label{fig:fair-iterators}
