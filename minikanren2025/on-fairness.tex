@@ -303,7 +303,7 @@ ends  = fromSorted [(x, "end")  | x <- [0,      7_777_777]]
 
 \noindent
 The intersection of \ttt{evens} and \ttt{odds}, and therefore of all three sets, is empty.
-We can compute this using \ttt{intersect}, but performance is \emph{dramatically} better if we avoid intersecting \ttt{evens} and \ttt{odds} directly by intersecting one of them with \ttt{ends} first.
+We can compute this by calling \ttt{intersect} twice, but performance improves dramatically if, rather than intersecting \ttt{evens} and \ttt{odds} first, we intersect one of them with \ttt{ends} first.
 At the GHCi repl:
 
 \begin{minted}{haskell}
@@ -327,20 +327,21 @@ By contrast, intersecting \ttt{odds} with \ttt{ends} almost immediately skips to
 \footnotemark{}
 
 \footnotetext{
-  We are telling a white lie here: because we use Haskell lists, seeking is linear-time, and there is no asymptotic slow-down; we are instead observing the difference between an \emph{interpreted} inner loop (\ttt{intersect}, loaded at the GHCi repl) and a \emph{compiled} one (\ttt{dropWhile} from the standard library).
+  We are telling a white lie here: because we use Haskell lists, seeking is linear-time, and there is no asymptotic slow-down.
+  We are instead observing the difference between an \emph{interpreted} inner loop (\ttt{intersect}, loaded at the GHCi repl) and a \emph{compiled} one (\ttt{dropWhile} from the standard library).
   However, had we used sorted arrays with binary or galloping search, or balanced trees, there would be a true asymptotic speed-up for the reasons we describe.
 }
 
 The trouble, of course, is that \ttt{intersect} does not (and, with our current \hask{Iter} interface, \emph{cannot}) fairly interleave work between its subiterators.
 Instead, like \ttt{interleave}, it blocks first on one, then the other.
-For precisely this reason leapfrog intersection is usually formulated as an $n$-way operation (e.g.\ in \citet{lftj}).
-Our binary approach fails to capture in a compositional way the essence of leapfrog intersection, which is \emph{to communicate lower bounds on keys between the intersected iterators.}
-When intersecting two iterators, we propagate information back and forth between them: the key we find in the first becomes our target in the second, and vice versa.
-But in \ttt{(evens `intersect` odds) `intersect` ends}, before communicating any information to or from \ttt{ends}, we first block waiting for \ttt{evens `intersect` odds} to find a key, which takes $O(n)$ work (where $n$ is the size of \ttt{evens}/\ttt{odds}).
-This prevents useful information exchange between \ttt{ends} and \ttt{evens}/\ttt{odds}, which would let us skip this work and jump straight to the end in $O(1)$ time.
+For this reason leapfrog intersection is usually formulated as an $n$-way operation (e.g.\ see \citet{lftj}).
+Our binary \ttt{intersect} fails to composably capture the essence of this algorithm, which is \emph{to propagate lower bounds on keys between all intersected iterators:}
+%When intersecting two iterators produced by \ttt{fromSorted}, we propagate information back and forth between them: the key we find in the first becomes our target in the second, and vice versa.
+in \ttt{(evens `intersect` odds) `intersect` ends}, before communicating any information to or from \ttt{ends}, we immediately wait for \ttt{evens `intersect` odds} to find a key, which takes $O(n)$ work (where $n$ is the size of \ttt{evens}/\ttt{odds}).
+This blocks information exchange between \ttt{ends} and \ttt{evens}/\ttt{odds} that would let us jump straight to the end in $O(1)$ time.
 
 However, all is not lost, nor do we need to move to an $n$-way intersection primitive.
-As with stream union, we can overcome this limitation by changing our interface to allow bounded interleaving.
+As with stream union, we can overcome this limitation by changing our interface to allow interleaving by \emph{bounding} how much work we do.
 
 
 \section{Fair intersection of seekable iterators}
