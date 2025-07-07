@@ -22,3 +22,7 @@ intersect s@(Yield k1 x s') t@(Yield k2 y t') =
 xs = fromSorted [(1, "one"), (2, "two"), (3, "three")]
 ys = fromSorted [(1, "wun"), (3, "tres")]
 xys = xs `intersect` ys
+
+evens = fromSorted [(x, "even") | x <- [0, 2 .. 7_777_777]]
+odds  = fromSorted [(x, "odd")  | x <- [1, 3 .. 7_777_777]]
+ends  = fromSorted [(x, "end")  | x <- [0,      7_777_777]]

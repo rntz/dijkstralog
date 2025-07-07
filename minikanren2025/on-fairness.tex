@@ -1,4 +1,5 @@
-\documentclass[acmsmall,screen,review,anonymous,dvipsnames]{acmart}
+\documentclass[acmsmall,screen,review,anonymous,dvipsnames,svgnames]{acmart}
+\usepackage[utf8]{inputenc}
 
 %\title{Monotonic, Bounded, Fair}
 %% GEB: EGB reference how?
@@ -6,7 +7,8 @@
 %\subtitle{The power of miniKanren as inspiration; the limitations of miniKanren as implementation}
 
 %\title{Worst-case optimal joins as fair conjunctions}
-\title{Fair, bounded, worst-case optimal joins}
+%\title{Fair, bounded, worst-case optimal joins}
+\title{Fair intersection of seekable iterators}
 
 \author{Michael Arntzenius}
 \email{rntz@berkeley.edu}
@@ -24,7 +26,22 @@
 
 %% Packages & commands
 \usepackage{minted}
+\setminted{
+  %% linenos,
+  xleftmargin=1.5em,
+  listparameters=\setlength{\topsep}{0.5em},
+  %% %% bgcolor=AliceBlue,
+  %% %% bgcolor=Gainsboro,
+  %% %% bgcolor=OldLace,
+  %% %% bgcolor=Cornsilk,
+  %% bgcolor=Beige,
+  %% bgcolorpadding=0.5em,
+}
+\setmintedinline{bgcolor=none,bgcolorpadding=0pt}
+% try listparameters=... to set left margin?
+
 \newcommand\hask[1]{\mintinline{haskell}{#1}}
+\newcommand\ttt\texttt
 
 \newcommand\todo[1]{{\color{Orange}#1}}
 \newcommand\XXX{\todo{XXX}}
@@ -35,12 +52,13 @@
 \begin{abstract}
   {miniKanren}'s key semantic advance over Prolog is to implement a complete yet efficient search strategy, fairly interleaving execution between disjuncts.
   This fairness is accomplished by bounding how much work is done exploring one disjunct before switching to the next.
-  We show that the idea -- fairness via bounded work -- underlies an elegant compositional approach to implementing worst-case optimal joins using a seekable iterator interface, suitable for shallow embedding in functional languages.
+  We show that the same idea -- fairness via bounded work -- underlies an elegant compositional approach to implementing worst-case optimal joins using a seekable iterator interface, suitable for shallow embedding in functional languages.
 \end{abstract}
 
 \maketitle
 
-\section{Fair, bounded disjunction}
+\section{Fair union of streams}
+%\section{Fair, bounded disjunction}
 
 If there are multiple rules applicable to the current goal, Prolog tries them in order, exploring each to exhaustion before starting the next.
 If exploring a rule fails to terminate, later rules are not visited, and any potential solutions they could have generated are lost.
@@ -49,19 +67,19 @@ If we think of goal-directed search as yielding a stream of solutions, Prolog im
 In Haskell, taking advantage of laziness to represent possibly-infinite streams, we might implement this like so:
 
 \begin{minted}{haskell}
-  data Stream a = Empty
-                | Yield a (Stream a)
-  append Empty        ys = ys
-  append (Yield x xs) ys = Yield x (append xs ys)         -- keep focus on xs
+data Stream a = Empty
+              | Yield a (Stream a)
+append Empty        ys = ys
+append (Yield x xs) ys = Yield x (append xs ys)         -- keep focus on xs
 \end{minted}
 
 \noindent
-As we've hinted, stream concatenation is an incomplete search strategy: \texttt{append xs ys} will never visit \texttt{ys} if \texttt{xs} is infinite.
-We can fix this by interleaving \texttt{xs} and \texttt{ys} instead:
+As we've hinted, stream concatenation is an incomplete search strategy: \ttt{append xs ys} will never visit \ttt{ys} if \ttt{xs} is infinite.
+We can fix this by interleaving \ttt{xs} and \ttt{ys} instead:
 
 \begin{minted}{haskell}
-  interleave Empty        ys = ys
-  interleave (Yield x xs) ys = Yield x (interleave ys xs) -- swap focus to ys
+interleave Empty        ys = ys
+interleave (Yield x xs) ys = Yield x (interleave ys xs) -- swap focus to ys
 \end{minted}
 
 \noindent
@@ -69,8 +87,8 @@ However, this is only complete if all streams involved are \emph{productive,} me
 It's easy to define unproductive streams recursively, for instance:
 
 \begin{minted}{haskell}
-  theAnswer :: Stream Int
-  theAnswer = interleave theAnswer (Yield 42 Empty)
+theAnswer :: Stream Int
+theAnswer = interleave theAnswer (Yield 42 Empty)
 \end{minted}
 
 %% TODO: explain semantics, xs = xs ∪ {42}. Usual semantics is xs is the least set satisfying this, so xs = {42}; but *whatever* xs is, we definitely have 42 ∈ xs since 42 ∈ {42} ⇒ 42 ∈ xs ∪ {42} ⇒ 42 ∈ xs. But our approach here won't discover that; so it's not complete.
@@ -83,35 +101,34 @@ Neither concatenation nor interleaving has this property, and in fact, standard 
 The standard solution, used in e.g.~\textmu{}Kanren~\citep{muKanren}, is to extend \hask{Stream} with an extra constructor, \hask{Later},\footnotemark\ which exposes the existence of intermediate evaluation steps without giving any further information:
 
 \begin{minted}{haskell}
-  data Stream a = Empty
-                | Yield a (Stream a)
-                | Later   (Stream a)
+data Stream a = Empty
+              | Yield a (Stream a)
+              | Later   (Stream a)
 \end{minted}
 
 \noindent
 This makes it easy to ensure \emph{all} definitions are productive: simply guard any recursion with \hask{Later}.
-\todo{TODO: cite guarded recursion.}
-For instance, if we replace the canonical unproductive recursive definition, \hask{let xs = xs}, with a guarded one, \hask{let xs = Later xs}, examining \texttt{xs} will no longer cause an unrecoverable infinite loop; instead it will immediately yield \hask{Later xs}.
+\todo{TODO: cite guarded (co-)recursion.}
+For instance, if we replace the canonical unproductive recursive definition, \hask{let xs = xs}, with a guarded one, \hask{let xs = Later xs}, examining \ttt{xs} will no longer cause an unrecoverable infinite loop; instead it will immediately yield \hask{Later xs}.
 Thus \hask{Later} acts as an explicit signal to the consumer, permitting it to switch to evaluating some other stream if it so wishes.
-We can use this to implement fairly interleaving stream union (\textmu{}Kanren's \texttt{mplus}):
+We can use this to implement fairly interleaving stream union (\textmu{}Kanren's \ttt{mplus}):
 
 \footnotetext{In \citet{muKanren} these are ``immature'' streams, represented as procedures of zero arguments.}
 
 \begin{minted}{haskell}
-  data Stream a = Empty
-                | Yield a (Stream a)
-                | Later   (Stream a)
-  union Empty        ys = ys
-  union (Yield x xs) ys = Yield x (union xs ys)  -- keep focus on xs
-  union (Later xs)   ys = Later   (union ys xs)  -- swap focus to ys
+union Empty        ys = ys
+union (Yield x xs) ys = Yield x (union xs ys)  -- keep focus on xs
+union (Later xs)   ys = Later   (union ys xs)  -- swap focus to ys
 \end{minted}
 
 \noindent
-As long as we are careful to guard all recursion with \hask{Later}, we can now define \texttt{theAnswer} completely:
+As long as we are careful to guard all recursion with \hask{Later}, we can now define \ttt{theAnswer} completely:
 
 \begin{minted}{haskell}
-  theAnswer :: Stream Int
-  theAnswer = union (Later theAnswer) (Yield 42 Empty)
+theAnswer :: Stream Int
+theAnswer = union (Later theAnswer) (Yield 42 Empty)
+-- Equivalent to an infinite stream of interleaved Later & Yield 42:
+-- theAnswer = Later (Yield 42 theAnswer)
 \end{minted}
 
 \noindent
@@ -175,19 +192,19 @@ Let us assume our data is sorted and allows efficiently seeking forward to find 
 We can capture these assumptions in a \emph{seekable iterator} interface:
 
 \begin{minted}{haskell}
-  data Iter k v = Empty
-                | Yield k v (k -> Iter k v)
+data Iter k v = Empty
+              | Yield k v (k -> Iter k v)
 \end{minted}
 
 \noindent
-A seekable iterator, \hask{Iter k v}, is like a stream of key-value pairs, \hask{Stream (k,v)}, except that (a) it yields pairs in ascending key order, and (b) rather than the \emph{entire} remainder of the stream, \hask{Yield} produces a function \hask{seek :: k -> Iter k v} which seeks forward to its argument; i.e.\ \hask{seek target} iterates over all remaining pairs with keys \texttt{k >= target}.
+A seekable iterator, \hask{Iter k v}, is like a stream of key-value pairs, \hask{Stream (k,v)}, except that (a) it yields pairs in ascending key order, and (b) rather than the \emph{entire} remainder of the stream, \hask{Yield} produces a function \hask{seek :: k -> Iter k v} which seeks forward to its argument; i.e.\ \ttt{seek target} iterates over all remaining pairs with keys \ttt{k >= target}.
 %
-To iterate over \emph{all} pairs, we repeatedly \texttt{seek} toward the just-visited key:
+To iterate over \emph{all} pairs, we repeatedly \ttt{seek} toward the just-visited key:
 
 \begin{minted}{haskell}
-  toSorted :: Iter k v -> [(k, v)]
-  toSorted Empty = []
-  toSorted (Yield k v seek) = (k,v) : toSorted (seek k)
+toSorted :: Iter k v -> [(k, v)]
+toSorted Empty = []
+toSorted (Yield k v seek) = (k,v) : toSorted (seek k)
 \end{minted}
 
 \noindent
@@ -195,35 +212,77 @@ Given a sorted list \hask{[(k, v)]}, we can easily produce a seekable iterator f
 We could use a more appropriate data structure, such as a sorted array or balanced tree, but omit this as it is not crucial to our explanation:
 
 \begin{minted}{haskell}
-  fromSorted :: Ord k => [(k, v)] -> Iter k v
-  fromSorted [] = Empty
-  fromSorted ((k,v) : rest) = Yield k v seek
-    where seek k' = fromSorted (dropWhile ((< k') . fst) rest)
+fromSorted :: Ord k => [(k, v)] -> Iter k v
+fromSorted [] = Empty
+fromSorted ((k,v) : rest) = Yield k v seek
+  where seek k' = fromSorted (dropWhile ((< k') . fst) rest)
 \end{minted}
 
 \noindent
 Finally, we can intersect two seekable iterators by leapfrogging: repeatedly advance the iterator at the smaller key towards the higher, until either both iterators reach the same key (an element of the intersection) or one is exhausted (the intersection is empty):
 
 \begin{minted}{haskell}
-  intersect :: Ord k => Iter k a -> Iter k b -> Iter k (a,b)
-  intersect Empty _ = Empty
-  intersect _ Empty = Empty
-  intersect s@(Yield k1 x s') t@(Yield k2 y t') =
-    case compare k1 k2 of
-      LT -> intersect (s' k2) t -- s < t, so seek s toward t
-      GT -> intersect s (t' k1) -- t < s, so seek t toward s
-      EQ -> Yield k1 (x,y) (\k' -> intersect (s' k') (t' k'))
+intersect :: Ord k => Iter k a -> Iter k b -> Iter k (a,b)
+intersect Empty _ = Empty
+intersect _ Empty = Empty
+intersect s@(Yield k1 x s') t@(Yield k2 y t') =
+  case compare k1 k2 of
+    LT -> intersect (s' k2) t -- s < t, so seek s toward t
+    GT -> intersect s (t' k1) -- t < s, so seek t toward s
+    EQ -> Yield k1 (x,y) (\k' -> intersect (s' k') (t' k'))
 \end{minted}
 
 \noindent
 So far, so good.
-However, \texttt{intersect} is not \emph{fair,} and this causes performance problems.
+However, \ttt{intersect} is not \emph{fair,} and this can cause performance to suffer asymptotically when intersecting more than two iterators.
+For instance, consider three subsets of the integers between 0 and 7,777,777 --- the evens, the odds, and the endpoints:
+
+\begin{minted}{haskell}
+evens = fromSorted [(x, "even") | x <- [0, 2 .. 7_777_777]]
+odds  = fromSorted [(x, "odd")  | x <- [1, 3 .. 7_777_777]]
+ends  = fromSorted [(x, "end")  | x <- [0,      7_777_777]]
+\end{minted}
 
 \noindent
-\todo{Explain how this is unfair, using evens-odds-endpoints example.
-  For this reason, leapfrog intersection is presented as an intrinsically n-ary operation.
-  Can we overcome this limitation?
+The intersection of \ttt{evens} and \ttt{odds}, and therefore of all three sets, is empty.
+We can compute this using \ttt{intersect}, but performance is \emph{dramatically} better if we avoid intersecting \ttt{evens} and \ttt{odds} directly by intersecting with \ttt{ends} first.
+At the GHCi repl:
+
+\begin{minted}{haskell}
+ghci> -- set +s to print time statistics
+ghci> :set +s
+ghci> toSorted ((evens `intersect` odds) `intersect` ends)
+[]
+(5.57 secs, 5,288,958,128 bytes)
+ghci> toSorted (evens `intersect` (odds `intersect` ends))
+[]
+(0.57 secs, 248,961,040 bytes)
+\end{minted}
+
+\noindent
+The reason is simple: ``leapfrogging'' \ttt{evens} and \ttt{odds} against one another alternates between each relation until both are exhausted; whatever our current key $x$ in \ttt{even} (e.g.\ $x = 1$), we seek forward past $x$ in \ttt{odds} and reach $x+1$; then we seek past $x+1$ in \ttt{even} to $x + 2$, and so on.
+We must do 7,777,777 units of work before we can determine that the intersection is empty.
+%
+By contrast, intersecting \ttt{odds} with \ttt{ends} will almost immediately skip to the end of both relations.
+(This occurs even though we are \emph{not} materializing any intermediate results.)%
+\footnotemark{}
+
+\footnotetext{
+  We are telling a white lie here: because we are using Haskell lists, in which seeking is linear-time, there is no \emph{asymptotic} slow-down in this particular example; we are instead observing the difference between an \emph{interpreted} inner loop (\ttt{intersect}, loaded at the GHCi repl) and a \emph{compiled} one (\ttt{dropWhile} from the standard library).
+  But had we used sorted arrays with binary or galloping search, or balanced trees, there would be a genuine asymptotic speed-up, for the reasons we describe.
 }
+
+The trouble, of course, is that \ttt{intersect} does not (and, with our current \hask{Iter} interface, \emph{cannot}) fairly interleave work between its subiterators.
+Instead, like \ttt{interleave}, it blocks first on one, then the other.
+For precisely this reason leapfrog intersection is usually formulated as an $n$-way operation (e.g.\ in \citet{lftj}). \XXX
+
+\todo{cleanup this para.}
+We have failed to capture in a compositional way the essence of leapfrog intersection, which is \emph{to communicate lower bounds on keys between the intersected iterators.}
+When intersecting two iterators, we propagate information back and forth between them: the key we find in the first becomes our target in the second, and vice versa.
+But in \ttt{(evens `intersect` odds) `intersect` ends}, before communicating any information to or from \ttt{ends}, we first block waiting for \ttt{evens `intersect` odds} to find a key, which takes $O(n)$ work (where $n$ is the size of \ttt{evens}/\ttt{odds}).
+This prevents useful information exchange between \ttt{ends} and \ttt{evens}/\ttt{odds}, which would let us skip this work and jump straight to the end in $O(1)$ time.
+\noindent
+\todo{Can we overcome this limitation?}
 
 %% \begin{figure}
 %%   \begin{minted}{haskell}
