@@ -141,7 +141,7 @@ interleave (Yield x xs) ys = Yield x (interleave ys xs) -- swap focus to ys
 \end{minted}
 
 \noindent
-However, this is only complete if all streams involved are \emph{productive,} meaning that evaluation to weak head normal form always yields a constructor (\hask{Empty} or \hask{Yield}) without looping indefinitely.
+However, this is complete only if both streams are \emph{productive,} meaning that evaluation to weak head normal form always yields a constructor (\hask{Empty} or \hask{Yield}) without looping indefinitely.
 It's easy to define unproductive streams recursively, for instance:
 
 \begin{minted}{haskell}
@@ -152,7 +152,7 @@ theAnswer = interleave theAnswer (Yield 42 Empty)
 %% TODO: explain semantics, xs = xs ∪ {42}. Usual semantics is xs is the least set satisfying this, so xs = {42}; but *whatever* xs is, we definitely have 42 ∈ xs since 42 ∈ {42} ⇒ 42 ∈ xs ∪ {42} ⇒ 42 ∈ xs. But our approach here won't discover that; so it's not complete.
 
 \noindent
-Our difficulty is that, ideally, we would like the union of streams to be productive if \emph{any} input stream is.
+In principle, the union of streams should be productive if \emph{any} input stream is.
 Neither concatenation nor interleaving has this property, and in fact, standard programming language evaluation orders (whether lazy or eager) cannot express fairly interleaving evaluation between two sub-expressions: we must pick one to examine first; if that one is unproductive, further evaluation is blocked.%
 \footnote{The classic example here is ``parallel or'', a hypothetical function \hask{por :: Bool -> Bool -> Bool} implementing boolean disjunction \emph{fairly,} meaning \hask{(por True undefined) == (por undefined True) == True}.}
 %
@@ -255,9 +255,9 @@ data Iter k v = Empty
 \end{minted}
 
 \noindent
-A seekable iterator, \hask{Iter k v}, is like a stream of key-value pairs, \hask{Stream (k,v)}, except that (a) it yields pairs in ascending key order, and (b) rather than the \emph{entire} remainder of the stream, \hask{Yield} produces a function \hask{seek :: k -> Iter k v} which seeks forward to its argument; i.e.\ \ttt{seek target} iterates over all remaining pairs with keys \ttt{k >= target}.
+A seekable iterator, \hask{Iter k v}, is like a stream of key-value pairs, \hask{Stream (k,v)}, except that (a) it yields pairs in ascending key order, and (b) rather than the \emph{entire} remainder of the stream, \hask{Yield} produces a function \hask{seek :: k -> Iter k v} which seeks forward in it, i.e.\ \ttt{seek target} iterates over the remaining pairs with keys \ttt{k >= target}.
 %
-To iterate over \emph{all} pairs, we repeatedly \ttt{seek} toward the just-visited key:
+To recover the entire remainder, we simply pass \ttt{seek} the just-visited key; this lets us iterate over all elements of the stream:
 
 \begin{minted}{haskell}
 toSorted :: Iter k v -> [(k, v)]
@@ -277,7 +277,7 @@ fromSorted ((k,v) : rest) = Yield k v seek
 \end{minted}
 
 \noindent
-Finally, we can intersect two seekable iterators by leapfrogging: repeatedly advance the iterator at the smaller key towards the higher, until either both iterators reach the same key (an element of the intersection) or one is exhausted (the intersection is empty):
+Finally, we can intersect two seekable iterators by leapfrogging: repeatedly advance the iterator at the smaller key towards the higher, until either both iterators reach the same key or one is exhausted:
 
 \begin{minted}{haskell}
 intersect :: Ord k => Iter k a -> Iter k b -> Iter k (a,b)
@@ -291,7 +291,7 @@ intersect s@(Yield k1 x s') t@(Yield k2 y t') =
 \end{minted}
 
 \noindent
-So far, so good.
+%So far, so good.
 However, \ttt{intersect}'s performance can suffer asymptotically when intersecting more than two iterators.
 For instance, consider three subsets of the integers between 0 and 7,777,777 --- the evens, the odds, and the endpoints:
 
@@ -332,21 +332,18 @@ By contrast, intersecting \ttt{odds} with \ttt{ends} almost immediately skips to
   However, had we used sorted arrays with binary or galloping search, or balanced trees, there would be a true asymptotic speed-up for the reasons we describe.
 }
 
-The trouble, of course, is that \ttt{intersect} does not (and, with our current \hask{Iter} interface, \emph{cannot}) fairly interleave work between its subiterators.
+The problem is that \ttt{intersect} does not (and with our current \hask{Iter} interface, \emph{cannot}) fairly interleave work between its arguments.
 Instead, like \ttt{interleave}, it blocks first on one, then the other.
 For this reason leapfrog intersection is usually formulated as an $n$-way operation (e.g.\ see \citet{lftj}).
-Our binary \ttt{intersect} fails to composably capture the essence of this algorithm, which is \emph{to propagate lower bounds on keys between all intersected iterators:}
+Our binary \ttt{intersect} fails to composably capture the essence of this algorithm, which is \emph{to propagate lower bounds on keys between all intersected iterators.}
 %When intersecting two iterators produced by \ttt{fromSorted}, we propagate information back and forth between them: the key we find in the first becomes our target in the second, and vice versa.
-in \ttt{(evens `intersect` odds) `intersect` ends}, before communicating any information to or from \ttt{ends}, we immediately wait for \ttt{evens `intersect` odds} to find a key, which takes $O(n)$ work (where $n$ is the size of \ttt{evens}/\ttt{odds}).
+Evaluating \ttt{(evens `intersect` odds) `intersect` ends} immediately waits for \ttt{evens `intersect` odds} to find a key, which takes $O(n)$ work (where $n$ is the size of \ttt{evens}/\ttt{odds}).
 This blocks information exchange between \ttt{ends} and \ttt{evens}/\ttt{odds} that would let us jump straight to the end in $O(1)$ time.
 
 However, all is not lost, nor do we need to move to an $n$-way intersection primitive.
 As with stream union, we can overcome this limitation by changing our interface to allow interleaving by \emph{bounding} how much work we do.
 
 
-\section{Fair intersection of seekable iterators}
-%\section{Worst-case optimal iteration as bounded, fair conjunction}
-
 \begin{figure}
   \begin{minted}[xleftmargin=0em, linenos]{haskell}
 data Bound k
@@ -397,6 +394,17 @@ intersect s t = Seek posn' seek' where
   \caption{Fair intersection of seekable iterators}
   \label{fig:fair-iterators}
 \end{figure}
+
+
+\section{Fair intersection of seekable iterators}
+%\section{Worst-case optimal iteration as bounded, fair conjunction}
+
+\todo{
+  fundamental idea: an iterator doesn't have to be either empty or yield a concrete key-value pair.
+  it might still be in the process of finding the next key-value pair.
+  but even in this case, it does know a \emph{lower bound} on the next key.
+  the fact that it can stop in the middle lets us avoid being forced to do arbitrary amounts of work (bounded); and the lower bound on key-space is what we need to propagate to the next iterator we choose to schedule.
+}
 
 
 %% ---------- BIBLIOGRAPHY ----------
