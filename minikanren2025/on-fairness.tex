@@ -105,7 +105,7 @@
 \begin{abstract}
   {miniKanren}'s key semantic advance over Prolog is to implement a complete yet efficient search strategy, fairly interleaving execution between disjuncts.
   This fairness is accomplished by bounding how much work is done exploring one disjunct before switching to the next.
-  We show that the same idea -- fairness via bounded work -- underlies an elegant compositional approach to implementing worst-case optimal joins using a seekable iterator interface, suitable for shallow embedding in functional languages.
+  We show that the same idea---fairness via bounded work---underlies an elegant compositional approach to implementing worst-case optimal joins using a seekable iterator interface, suitable for shallow embedding in functional languages.
 \end{abstract}
 
 \maketitle
@@ -136,7 +136,10 @@ interleave (Yield x xs) ys = Yield x (interleave ys xs) -- swap focus to ys
 \end{minted}
 
 \noindent
-However, this is complete only if both streams are \emph{productive,} meaning that evaluation to weak head normal form always yields a constructor (\hask{Empty} or \hask{Yield}) without looping indefinitely.
+However, this is complete only if both streams are \emph{productive,} meaning
+%that evaluation to weak head normal form always yields a constructor (\hask{Empty} or \hask{Yield}) without looping indefinitely.
+%they do a finite amount of work (i.e.\ do not loop indefinitely) before yielding control to their caller by producing either \hask{Empty} or \hask{Yield}.
+they do not loop indefinitely without producing either \hask{Empty} or \hask{Yield}.
 It's easy to define unproductive streams recursively.
 For instance, the logic program:
 
@@ -156,12 +159,14 @@ theAnswer = interleave theAnswer (Yield 42 Empty)
 %% TODO: explain semantics, xs = xs ∪ {42}. Usual semantics is xs is the least set satisfying this, so xs = {42}; but *whatever* xs is, we definitely have 42 ∈ xs since 42 ∈ {42} ⇒ 42 ∈ xs ∪ {42} ⇒ 42 ∈ xs. But our approach here won't discover that; so it's not complete.
 
 \noindent
-There is no computability-theoretic reason for this unproductivity: we can search disjuncts in parallel, so in principle, the union of streams should be productive if \emph{any} input stream is.
+There is no computability-theoretic reason for this unproductivity: we can search disjuncts in parallel, so the union of streams could in principle be productive if \emph{any} input stream is.
 However, neither concatenation nor interleaving has this property, and in fact, standard programming language evaluation orders (whether lazy or eager) cannot fairly interleave evaluation between two sub-expressions.
 We must pick one to examine first; if it is unproductive, further evaluation is blocked.%
 \footnote{Another classic computable-yet-undefinable function is ``parallel or'' \hask{por :: Bool -> Bool -> Bool} implementing fair boolean disjunction, meaning \hask{(por True undefined) == (por undefined True) == True}.}
 %
 The standard solution, used in e.g.~\textmu{}Kanren~\citep{muKanren}, is to extend \hask{Stream} with an extra constructor, \hask{Later},\footnotemark\ which exposes the existence of intermediate evaluation steps without giving any further information:
+
+\footnotetext{In \citet{muKanren} these are ``immature'' streams, represented as procedures of zero arguments.}
 
 \begin{minted}{haskell}
 data Stream a = Empty
@@ -170,13 +175,14 @@ data Stream a = Empty
 \end{minted}
 
 \noindent
-This makes it easy to ensure \emph{all} definitions are productive: simply guard any recursion with \hask{Later}.
-\todo{TODO: cite guarded (co-)recursion.}
+This makes it easy to ensure \emph{all} definitions are productive: simply guard any recursion with \hask{Later}.\footnotemark{}
 For instance, if we replace the canonical unproductive recursive definition, \hask{let xs = xs}, with a guarded one, \hask{let xs = Later xs}, examining \ttt{xs} will no longer cause an unrecoverable infinite loop; instead it will immediately yield \hask{Later xs}.
-Thus \hask{Later} acts as an explicit signal to the consumer, permitting it to switch to evaluating some other stream if desired.
+Thus \hask{Later} acts as an explicit signal to the consumer, permitting it to switch to evaluating something else.
 We can use this to implement fair stream union (\textmu{}Kanren's \ttt{mplus}):
 
-\footnotetext{In \citet{muKanren} these are ``immature'' streams, represented as procedures of zero arguments.}
+\footnotetext{There is a long line of work on type systems that ensure productivity by checking recursion is appropriately guarded~\citetext{\citealp{DBLP:conf/lics/Nakano00}, \citealp{DBLP:journals/corr/abs-1208-3596},  \citealp{DBLP:conf/icfp/AtkeyM13}}.
+  Such type systems would have caught our ``mistake'' in defining \texttt{theAnswer} recursively without guarding it.
+}
 
 \begin{minted}{haskell}
 union Empty        ys = ys
@@ -195,6 +201,12 @@ theAnswer = union (Later theAnswer) (Yield 42 Empty)
 \end{minted}
 
 \noindent
+\XXX\
+Productivity means \emph{we do a finite amount of work before yielding control to our caller.}
+More generally,
+\todo{generalize ``finite'' to ``bounded in some way'' and get EFFICIENCY not PRODUCTIVITY.}
+
+\noindent
 \todo{%
   TODO: explain this in terms of \emph{bounded work} instead of \emph{productivity}.
   (For instance, in the absence of any \hask{Later}s, this degenerates to concatenation; we are relying on \hask{Later} for completeness even if all streams are productive.)
@@ -205,6 +217,12 @@ theAnswer = union (Later theAnswer) (Yield 42 Empty)
   As we're about to see, it can also be used to ensure \emph{performance.}
 }
 
+We will now show how to apply a similar trick, but for \emph{conjunctive} queries rather than \emph{disjunctive} ones---in particular, database joins.
+We will take the implementation of \emph{leapfrog intersection of seekable iterators} used in the worst-case optimal join algorithm Leapfrog Triejoin~\citep{lftj}, and show that it is \emph{not} fair.
+To remedy this, we show how to extend the seekable iterator interface to allow \emph{bounded interleaving} between sub-iterators.
+
+\todo{Explain that intersection of sorted sets is both a special case of, and an ingredient in the implementation of, database joins.}
+
 %% X and Y
 %% --> evaluate X, it becomes (X1 : Xrest)
 %% --> Y[X1] or (Xrest and Y)
@@ -212,13 +230,7 @@ theAnswer = union (Later theAnswer) (Yield 42 Empty)
 
 \section{Unfair intersection of seekable iterators}
 
-We will now show how to apply a similar trick, but for \emph{conjunctive} queries rather than \emph{disjunctive} ones -- in particular, database joins.
-We will take the implementation of \emph{leapfrog intersection of seekable iterators} used in the worst-case optimal join algorithm Leapfrog Triejoin~\citep{lftj}, and show that it is \emph{not} fair.
-To remedy this, we show how to extend the seekable iterator interface to allow \emph{bounded interleaving} between sub-iterators.
-
-\todo{Explain that intersection of sorted sets is both a special case of, and an ingredient in the implementation of, database joins.}
-
-Let us assume our data is sorted and allows efficiently seeking forward to find the next key-value pair whose key is at least some lower bound (by e.g.\ galloping search).
+Suppose we have a collection of key-value pairs, stored in sorted order so that we can efficiently seek forward to find the next pair whose key satisfies some lower bound (by e.g.\ galloping search).
 We can capture these assumptions in a \emph{seekable iterator} interface:
 
 \begin{minted}{haskell}
@@ -265,7 +277,7 @@ intersect s@(Yield k1 x s') t@(Yield k2 y t') =
 \noindent
 %So far, so good.
 However, \ttt{intersect}'s performance can suffer asymptotically when intersecting more than two iterators.
-For instance, consider three subsets of the integers between 0 and 7,777,777 --- the evens, the odds, and the endpoints:
+For instance, consider three subsets of the integers between 0 and 7,777,777---the evens, the odds, and the endpoints:
 
 \begin{minted}{haskell}
 evens = fromSorted [(x, "even") | x <- [0, 2 .. 7_777_777]]
@@ -307,6 +319,7 @@ By contrast, intersecting \ttt{odds} with \ttt{ends} almost immediately skips to
 The problem is that \ttt{intersect} does not (and with our current \hask{Iter} interface, \emph{cannot}) fairly interleave work between its arguments.
 Instead, like \ttt{interleave}, it blocks first on one, then the other.
 For this reason leapfrog intersection is usually formulated as an $n$-way operation (e.g.\ see \citet{lftj}).
+%, with the expectation that it will be applied ``flat'' to all intersected iterators, rather than ``nested''---the output of leapfrog intersection, despite presenting a seekable iterator interface, cannot be used as input to leapfrog intersection without risking performance loss.
 Our binary \ttt{intersect} fails to composably capture the essence of this algorithm, which is \emph{to propagate lower bounds on keys between all intersected iterators.}
 %When intersecting two iterators produced by \ttt{fromSorted}, we propagate information back and forth between them: the key we find in the first becomes our target in the second, and vice versa.
 Evaluating \ttt{(evens `intersect` odds) `intersect` ends} immediately waits for \ttt{evens `intersect` odds} to find a key, which takes $O(n)$ work (where $n$ is the size of \ttt{evens}/\ttt{odds}).
@@ -332,7 +345,7 @@ data Iter' k v = Empty
 However, this is insufficiently expressive.
 The essence of leapfrog intersection is to communicate lower bounds between intersected iterators.
 \hask{Iter'} produces lower bounds only by yielding key-value pairs.
-Yet if we interrupt a leapfrogging intersection while it is still searching for the next key-value pair, it may still be able to contribute a new lower bound -- for instance, while intersecting \ttt{evens} and \ttt{odds}, after \ttt{evens} proposes \ttt{k = 0} and \ttt{odds} seeks forward to reach \ttt{k = 1}, but before we seek again in \ttt{evens}, we already know that \ttt{k >= 1}.
+Yet if we interrupt a leapfrogging intersection while it is still searching for the next key-value pair, it may still be able to contribute a new lower bound---for instance, while intersecting \ttt{evens} and \ttt{odds}, after \ttt{evens} proposes \ttt{k = 0} and \ttt{odds} seeks forward to reach \ttt{k = 1}, but before we seek again in \ttt{evens}, we already know that \ttt{k >= 1}.
 %
 Therefore instead we regard each iterator as having a \hask{Position}, which may be either a key-value pair or a lower bound on future keys:
 
@@ -424,7 +437,7 @@ intersect s t = Seek posn' seek' where
 
 \noindent
 \todo{TODO: ok now what do I say? Oh, obviously I test this on my previous example: evens, odds, ends.
-  UNFORTUNATELY, this (a) runs straight into the white lie I told earlier -- it's super slow unless we compile it; (b) when we compile, the three-way intersection is indeed faster than (intersect evens odds), which is good, but (c) why should it be? it's the same asymptotic complexity! it appears that dropWhile is ~3.5--4$\times$ faster than ping-ponging between evens \& odds, which is... a larger constant factor than I expected, but okay.
+  UNFORTUNATELY, this (a) runs straight into the white lie I told earlier---it's super slow unless we compile it; (b) when we compile, the three-way intersection is indeed faster than (intersect evens odds), which is good, but (c) why should it be? it's the same asymptotic complexity! it appears that dropWhile is ~3.5--4$\times$ faster than ping-ponging between evens \& odds, which is... a larger constant factor than I expected, but okay.
 }
 
 
