@@ -89,6 +89,8 @@
   listparameters=\setlength{\topsep}{0.5em},
 }
 
+\usepackage[nameinlink,noabbrev]{cleveref}
+
 \newcommand\hask[1]{\mintinline{haskell}{#1}}
 \newcommand\ttt\texttt
 
@@ -161,7 +163,7 @@ theAnswer = interleave theAnswer (Yield 42 Empty)
 \noindent
 There is no computability-theoretic reason for this unproductivity: we can search disjuncts in parallel, so the union of streams could in principle be productive if \emph{any} input stream is.
 However, neither concatenation nor interleaving has this property, and in fact, standard programming language evaluation orders (whether lazy or eager) cannot fairly interleave evaluation between two sub-expressions.
-We must pick one to examine first; if it is unproductive, further evaluation is blocked.%
+We must pick one to examine first, and if it is unproductive, further evaluation is blocked.%
 \footnote{Another classic computable-yet-undefinable function is ``parallel or'' \hask{por :: Bool -> Bool -> Bool} implementing fair boolean disjunction, meaning \hask{(por True undefined) == (por undefined True) == True}.}
 %
 The standard solution, used in e.g.~\textmu{}Kanren~\citep{muKanren}, is to extend \hask{Stream} with an extra constructor, \hask{Later},\footnotemark\ which exposes the existence of intermediate evaluation steps without giving any further information:
@@ -180,7 +182,7 @@ For instance, if we replace the canonical unproductive recursive definition, \ha
 Thus \hask{Later} acts as an explicit signal to the consumer, permitting it to switch to evaluating something else.
 We can use this to implement fair stream union (\textmu{}Kanren's \ttt{mplus}):
 
-\footnotetext{There is a long line of work on type systems that ensure productivity by checking recursion is appropriately guarded~\citetext{\citealp{DBLP:conf/lics/Nakano00}, \citealp{DBLP:journals/corr/abs-1208-3596},  \citealp{DBLP:conf/icfp/AtkeyM13}}.
+\footnotetext{There is a long line of work on type systems that ensure productivity by checking recursion is appropriately guarded in this fashion~\citetext{e.g.\ \citealp{DBLP:conf/lics/Nakano00}, \citealp{DBLP:journals/corr/abs-1208-3596},  \citealp{DBLP:conf/icfp/AtkeyM13}}.
   Such type systems would have caught our ``mistake'' in defining \texttt{theAnswer} recursively without guarding it.
 }
 
@@ -201,27 +203,56 @@ theAnswer = union (Later theAnswer) (Yield 42 Empty)
 \end{minted}
 
 \noindent
-\XXX\
+%In fact, this is more than merely productive.
+%We are actually using a slightly stronger property than productivity here.
+Observe that \ttt{union} is effectively ``concatenate on \hask{Yield}, interleave on \hask{Later}''.
+Since concatenation is an incomplete search strategy for infinite lists, \ttt{union} is complete only for {``strongly productive''} streams with at most finitely many \hask{Yield}s between successive \hask{Later}s.
+%This is no harder to ensure than productivity (infinity comes only from recursion; so guard all recursion with \hask{Later}), but it is formally stronger.
+Since all infinity comes from recursion, guarding recursion with \hask{Later} also guarantees strong productivity.
+%
 Productivity means \emph{we do a finite amount of work before yielding control to our caller.}
-More generally,
-\todo{generalize ``finite'' to ``bounded in some way'' and get EFFICIENCY not PRODUCTIVITY.}
+If we regard all constructors as yielding control, we get the usual meaning of productivity in lazy languages;
+if we instead say that only \hask{Later} yields control, we get strong productivity.\footnotemark
 
-\noindent
-\todo{%
-  TODO: explain this in terms of \emph{bounded work} instead of \emph{productivity}.
-  (For instance, in the absence of any \hask{Later}s, this degenerates to concatenation; we are relying on \hask{Later} for completeness even if all streams are productive.)
-  Explain that by guarding with \hask{Later}, we ensure a bounded amount of work is done before we hit a \hask{Later}.
-  This means that switching only when we see \hask{Later} is fair, and therefore complete.
-  Our design recipe, then, is to carefully \emph{bound} the work we do in any given search step, allowing us to \emph{fairly interleave} search steps.
-  In minikanren this is used to ensure \emph{completeness.}
-  As we're about to see, it can also be used to ensure \emph{performance.}
+\footnotetext{For this reason, in an eager language, only \hask{Later}'s argument needs to be thunked, not \hask{Yield}'s.
+  Likewise, in type theories for guarded recursion, it is \hask{Later}'s argument which must be guarded with a ``later'' modality.
+%  Of course, it can be beneficial for performance to also delay evaluation of the arguments to \hask{Yield}, as typical miniKanren implementations do.
 }
 
-We will now show how to apply a similar trick, but for \emph{conjunctive} queries rather than \emph{disjunctive} ones---in particular, database joins.
-We will take the implementation of \emph{leapfrog intersection of seekable iterators} used in the worst-case optimal join algorithm Leapfrog Triejoin~\citep{lftj}, and show that it is \emph{not} fair.
-To remedy this, we show how to extend the seekable iterator interface to allow \emph{bounded interleaving} between sub-iterators.
+Fair disjunction, then, is accomplished by bounding the work any stream does before yielding control, allowing us to fairly interleave multiple streams.
+In the next two sections, we'll apply a similar trick to intersection rather than union.
+In \cref{sec:unfair-intersection} we will show that the leapfrog intersection of seekable iterators used in the worst-case optimal join algorithm Leapfrog Triejoin~\citep{lftj} is \emph{not} fair.
+To remedy this, in \cref{sec:fair-intersection} we show how to extend the seekable iterator interface to allow \emph{bounded interleaving} between sub-iterators.
 
-\todo{Explain that intersection of sorted sets is both a special case of, and an ingredient in the implementation of, database joins.}
+
+%% ---------- SCRAPS, TODO: REUSE ----------
+%% \todo{
+%%   In minikanren this is used to ensure \emph{completeness.}
+%%   As we're about to see, it can also be used to ensure \emph{performance.}
+%%   }
+
+%% In the next two sections, we will further strengthen productivity from \emph{termination} to \emph{performance.}
+%% Where termination is binary (finite or infinite work?), performance is a spectrum: how \emph{much} work?
+%% To implement fair disjunction, we bound the work any stream does before yielding control, allowing us to fairly interleave multiple streams.
+%% By applying the same trick we can implement fair \emph{conjunction}
+
+%% In the next two sections, we will further strengthen productivity from \emph{termination} to \emph{performance.}
+%% Where termination is binary (finite or infinite work?), performance is a spectrum: how \emph{much} work?
+%% By \emph{bounding} how much work 
+
+%% \todo{generalize ``finite'' to ``bounded in some way'' and get EFFICIENCY not PRODUCTIVITY.}
+
+%% \todo{%
+%%   TODO: explain this in terms of \emph{bounded work} instead of \emph{productivity}.
+%%   %(For instance, in the absence of any \hask{Later}s, this degenerates to concatenation; we are relying on \hask{Later} for completeness even if all streams are productive.)
+%%   %Explain that by guarding with \hask{Later}, we ensure a bounded amount of work is done before we hit a \hask{Later}.
+%%   %This means that switching only when we see \hask{Later} is fair, and therefore complete.
+%%   Our design recipe, then, is to carefully \emph{bound} the work we do in any given search step, allowing us to \emph{fairly interleave} search steps.
+%%   In minikanren this is used to ensure \emph{completeness.}
+%%   As we're about to see, it can also be used to ensure \emph{performance.}
+%% }
+
+%% \todo{Explain that intersection of sorted sets is both a special case of, and an ingredient in the implementation of, database joins.}
 
 %% X and Y
 %% --> evaluate X, it becomes (X1 : Xrest)
@@ -229,6 +260,7 @@ To remedy this, we show how to extend the seekable iterator interface to allow \
 
 
 \section{Unfair intersection of seekable iterators}
+\label{sec:unfair-intersection}
 
 Suppose we have a collection of key-value pairs, stored in sorted order so that we can efficiently seek forward to find the next pair whose key satisfies some lower bound (by e.g.\ galloping search).
 We can capture these assumptions in a \emph{seekable iterator} interface:
@@ -331,6 +363,7 @@ As with stream union, we can overcome this limitation by changing our interface 
 
 \section{Fair intersection of seekable iterators}
 %\section{Worst-case optimal iteration as bounded, fair conjunction}
+\label{sec:fair-intersection}
 
 Just as we implemented fair interleaving of streams by allowing a stream \emph{not} to yield an element, we will implement fair interleaving of seekable iterators by allowing them \emph{not} to yield a key-value pair.
 Applying this lesson na\"ively, we might come up with:
@@ -358,7 +391,7 @@ data Bound k = Atleast k | Greater k | Done deriving Eq
 \hask{Found k v} means we've found a key-value pair \ttt{(k,v)}.
 \hask{Bound (Atleast k)} means all future keys are \ttt{>= k}.
 \hask{Bound Done} means the iterator is exhausted.
-We will understand the purpose of \hask{Greater} shortly.
+We will see the purpose of \hask{Greater} shortly.
 
 We can now define the type \hask{Seek} of seekable iterators supporting fair intersection, which possess both a position and a seek function:
 
@@ -375,9 +408,9 @@ We must take this into account when defining \ttt{toSorted}:
 
 \begin{minted}[linenos]{haskell}
 toSorted :: Seek k v -> [(k,v)]
-toSorted (Seek (Bound Done) _)   = []
-toSorted (Seek (Found k v) seek) = (k,v) : toSorted (seek (Greater k))
-toSorted (Seek (Bound k)   seek) = toSorted (seek k)
+toSorted (Seek (Bound Done) _)    = []
+toSorted (Seek (Found k v)  seek) = (k,v) : toSorted (seek (Greater k))
+toSorted (Seek (Bound k)    seek) = toSorted (seek k)
 \end{minted}
 
 \noindent
@@ -526,13 +559,16 @@ intersect s t = Seek posn' seek' where
 
 \section{Related and future work}
 
+Our \hask{Seek} interface is effectively a variant of the \emph{indexed streams} of \citet{indexed-streams}.
+Their interface replaces the \hask{Position} of an iterator with three values: its \emph{index} (\emph{key} in our terminology), a \emph{ready flag} indicating whether it has a value, and its \emph{value} (which should only be accessed when the ready flag is set).
+In place of \hask{seek} they have a \emph{skip} function which takes a key and a flag indicating whether to use \hask{Atleast} or \hask{Greater} semantics.
+\todo{all their key/index types are bounded so they don't need \hask{Done}---is this accurate?}
+
 \todo{by repeatedly intersecting on different variables (trie style), we get worst-case optimal joins!}
 
 \todo{this is a form of fair conjunction.}
 
 \todo{this can't handle arbitrary recursion; we'd need to introduce a time delay element. (Curiously, this might bring us closer to Datalog, which finds fixed points by iteration through an arbitrary time dimension!)}
-
-\todo{indexed streams reference}
 
 
 %% ---------- BIBLIOGRAPHY ----------
