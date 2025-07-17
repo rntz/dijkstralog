@@ -9,4 +9,3 @@ union (Later xs)   ys = Later   (union ys xs)  -- swap focus to ys
 
 theAnswer :: Stream Int
 theAnswer = union (Later theAnswer) (Yield 42 Empty)
-

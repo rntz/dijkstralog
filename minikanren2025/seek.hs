@@ -1,5 +1,8 @@
-data Position k v = Found k v | Bound (Bound k)
-data Bound k = Atleast k | Greater k | Done deriving Eq
+import Data.Array (Array)
+import Data.Array.IArray
+
+data Position k v = Found k v | Bound (Bound k) deriving Show
+data Bound k = Atleast k | Greater k | Done deriving (Eq, Show)
 
 instance Ord k => Ord (Bound k) where
   compare x y = embed x `compare` embed y
@@ -16,14 +19,20 @@ data Seek k v = Seek
 
 toSorted :: Seek k v -> [(k,v)]
 toSorted (Seek (Bound Done) _)   = []
+toSorted (Seek (Bound p)   seek) = toSorted (seek p)
 toSorted (Seek (Found k v) seek) = (k,v) : toSorted (seek (Greater k))
-toSorted (Seek (Bound k)   seek) = toSorted (seek k)
 
 fromSorted :: Ord k => [(k,v)] -> Seek k v
-fromSorted l = Seek posn seek
-  where posn = case l of [] -> Bound Done
-                         (k,v):_ -> Found k v
-        seek target = fromSorted (dropWhile (not . satisfies target . fst) l)
+fromSorted l = Seek posn seek where
+  posn = case l of (k,v):_ -> Found k v
+                   []      -> Bound Done
+  seek target = fromSorted (dropWhile (not . satisfies target . fst) l)
+
+-- fromSorted :: Ord k => [(k,v)] -> Seek k v
+-- fromSorted l = Seek posn seek
+--   where posn = case l of [] -> Bound Done
+--                          (k,v):_ -> Found k v
+--         seek target = fromSorted (dropWhile (not . satisfies target . fst) l)
 
 bound :: Seek k v -> Bound k
 bound (Seek (Found k _) _) = Atleast k
@@ -37,8 +46,57 @@ intersect s t = Seek posn' seek' where
     s' = seek s k
     t' = seek t (bound s') -- leapfrog optimization; could be (seek2 k) instead
 
-evens = fromSorted [(x, "even") | x <- [0, 2 .. 87_777_777]]
-odds  = fromSorted [(x, "odd")  | x <- [1, 3 .. 87_777_777]]
-ends  = fromSorted [(x, "end")  | x <- [0,      87_777_777]]
+n = 30_000_000
+evens = fromSorted [(x, "even") | x <- [0, 2 .. n]]
+odds  = fromSorted [(x, "odd")  | x <- [1, 3 .. n]]
+ends  = fromSorted [(x, "end")  | x <- [0,      n]]
 
-main = print $ length $ toSorted $ evens `intersect` odds `intersect` ends
+--main = print $ length $ toSorted $ evens `intersect` odds `intersect` ends
+main = do
+  print $ posn evens
+  print $ posn odds
+  print $ posn ends
+  putStrLn "evens intersect odds intersect ends..."
+  print $ length $ toSorted $ evens `intersect` odds `intersect` ends
+  putStrLn "evens intersect odds..."
+  print $ length $ toSorted $ evens `intersect` odds
+
+-- fromSorted :: Ord k => [(k,v)] -> Seek k v
+-- fromSorted l = arr `seq` fromArray arr bounds
+--   where bounds = (0, length l)
+--         arr = listArray bounds l
+
+fromArray :: Ord k => Array Int (k, v) -> (Int, Int) -> Seek k v
+fromArray arr (lo, hi) = self where
+  self = Seek pos sek
+  pos | lo >= hi  = Bound Done
+      | otherwise = Found k v where (k,v) = arr ! lo
+  sek tgt = fromArray arr (lo', hi)
+    where lo' = gallop (satisfies tgt . fst . (arr !)) lo hi
+
+fromIArray :: (IArray a k, Ord k) => a Int k -> Seek k ()
+fromIArray arr = go lo where
+  (lo, hi) = bounds arr
+  go i = Seek pos sek where
+    pos | i >= hi   = Bound Done
+        | otherwise = Found k () where k = arr ! i
+    sek tgt = go $ gallop (satisfies tgt . (arr !)) i hi
+
+-- galloping search
+gallop :: (Int -> Bool) -> Int -> Int -> Int
+gallop p lo hi = if p lo then lo else go lo 1
+  where go lo step
+          | lo + step >= hi = snd $ search mid p lo hi
+          | p (lo + step) = snd $ search mid p lo (lo + step)
+          | otherwise = go (lo + step) (step * 2)
+
+-- binary search
+-- https://byorgey.wordpress.com/2023/01/01/competitive-programming-in-haskell-better-binary-search/
+search :: (a -> a -> Maybe a) -> (a -> Bool) -> a -> a -> (a, a)
+search mid p = go where
+  go l r = case mid l r of Nothing -> (l,r)
+                           Just m | p m       -> go l m
+                                  | otherwise -> go m r
+
+mid l r | r - l > 1 = Just ((l+r) `div` 2)
+        | otherwise = Nothing
