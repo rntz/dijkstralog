@@ -24,62 +24,62 @@
 \citestyle{acmauthoryear}
 
 
-%% ACM keywords & CCS concepts
-\keywords{miniKanren, seekable iterators, fair intersection, fair conjunction, worst-case optimal joins}
+%% %% ACM keywords & CCS concepts
+%% \keywords{miniKanren, seekable iterators, fair intersection, fair conjunction, worst-case optimal joins}
 
-\begin{CCSXML}
-<ccs2012>
-   <concept>
-       <concept_id>10003752.10010070.10010111.10010113</concept_id>
-       <concept_desc>Theory of computation~Database query languages (principles)</concept_desc>
-       <concept_significance>500</concept_significance>
-       </concept>
-   <concept>
-       <concept_id>10003752.10010070.10010111.10011711</concept_id>
-       <concept_desc>Theory of computation~Database query processing and optimization (theory)</concept_desc>
-       <concept_significance>500</concept_significance>
-       </concept>
-   <concept>
-       <concept_id>10003752.10010070.10010111.10011734</concept_id>
-       <concept_desc>Theory of computation~Logic and databases</concept_desc>
-       <concept_significance>500</concept_significance>
-       </concept>
-   <concept>
-       <concept_id>10003752.10010070.10010111.10011710</concept_id>
-       <concept_desc>Theory of computation~Data structures and algorithms for data management</concept_desc>
-       <concept_significance>300</concept_significance>
-       </concept>
-   <concept>
-       <concept_id>10003752.10003809.10011254</concept_id>
-       <concept_desc>Theory of computation~Algorithm design techniques</concept_desc>
-       <concept_significance>300</concept_significance>
-       </concept>
-   <concept>
-       <concept_id>10003752.10003809.10010031.10010033</concept_id>
-       <concept_desc>Theory of computation~Sorting and searching</concept_desc>
-       <concept_significance>300</concept_significance>
-       </concept>
-   <concept>
-       <concept_id>10003752.10010124.10010125.10010127</concept_id>
-       <concept_desc>Theory of computation~Functional constructs</concept_desc>
-       <concept_significance>500</concept_significance>
-       </concept>
-   <concept>
-       <concept_id>10010147.10010148.10010149.10010157</concept_id>
-       <concept_desc>Computing methodologies~Equation and inequality solving algorithms</concept_desc>
-       <concept_significance>100</concept_significance>
-       </concept>
- </ccs2012>
-\end{CCSXML}
+%% \begin{CCSXML}
+%% <ccs2012>
+%%    <concept>
+%%        <concept_id>10003752.10010070.10010111.10010113</concept_id>
+%%        <concept_desc>Theory of computation~Database query languages (principles)</concept_desc>
+%%        <concept_significance>500</concept_significance>
+%%        </concept>
+%%    <concept>
+%%        <concept_id>10003752.10010070.10010111.10011711</concept_id>
+%%        <concept_desc>Theory of computation~Database query processing and optimization (theory)</concept_desc>
+%%        <concept_significance>500</concept_significance>
+%%        </concept>
+%%    <concept>
+%%        <concept_id>10003752.10010070.10010111.10011734</concept_id>
+%%        <concept_desc>Theory of computation~Logic and databases</concept_desc>
+%%        <concept_significance>500</concept_significance>
+%%        </concept>
+%%    <concept>
+%%        <concept_id>10003752.10010070.10010111.10011710</concept_id>
+%%        <concept_desc>Theory of computation~Data structures and algorithms for data management</concept_desc>
+%%        <concept_significance>300</concept_significance>
+%%        </concept>
+%%    <concept>
+%%        <concept_id>10003752.10003809.10011254</concept_id>
+%%        <concept_desc>Theory of computation~Algorithm design techniques</concept_desc>
+%%        <concept_significance>300</concept_significance>
+%%        </concept>
+%%    <concept>
+%%        <concept_id>10003752.10003809.10010031.10010033</concept_id>
+%%        <concept_desc>Theory of computation~Sorting and searching</concept_desc>
+%%        <concept_significance>300</concept_significance>
+%%        </concept>
+%%    <concept>
+%%        <concept_id>10003752.10010124.10010125.10010127</concept_id>
+%%        <concept_desc>Theory of computation~Functional constructs</concept_desc>
+%%        <concept_significance>500</concept_significance>
+%%        </concept>
+%%    <concept>
+%%        <concept_id>10010147.10010148.10010149.10010157</concept_id>
+%%        <concept_desc>Computing methodologies~Equation and inequality solving algorithms</concept_desc>
+%%        <concept_significance>100</concept_significance>
+%%        </concept>
+%%  </ccs2012>
+%% \end{CCSXML}
 
-\ccsdesc[500]{Theory of computation~Database query languages (principles)}
-\ccsdesc[500]{Theory of computation~Database query processing and optimization (theory)}
-\ccsdesc[500]{Theory of computation~Logic and databases}
-\ccsdesc[300]{Theory of computation~Data structures and algorithms for data management}
-\ccsdesc[300]{Theory of computation~Algorithm design techniques}
-\ccsdesc[300]{Theory of computation~Sorting and searching}
-\ccsdesc[500]{Theory of computation~Functional constructs}
-\ccsdesc[100]{Computing methodologies~Equation and inequality solving algorithms}
+%% \ccsdesc[500]{Theory of computation~Database query languages (principles)}
+%% \ccsdesc[500]{Theory of computation~Database query processing and optimization (theory)}
+%% \ccsdesc[500]{Theory of computation~Logic and databases}
+%% \ccsdesc[300]{Theory of computation~Data structures and algorithms for data management}
+%% \ccsdesc[300]{Theory of computation~Algorithm design techniques}
+%% \ccsdesc[300]{Theory of computation~Sorting and searching}
+%% \ccsdesc[500]{Theory of computation~Functional constructs}
+%% \ccsdesc[100]{Computing methodologies~Equation and inequality solving algorithms}
 
 
 %% Packages & commands
@@ -101,6 +101,8 @@
 %\renewcommand\todo[1]{{\color{VioletRed}#1}}
 \newcommand\XXX{\todo{XXX}}
 
+\renewcommand\todo[1]{\ignorespaces}
+
 
 \begin{document}
 
@@ -115,11 +117,10 @@
 \section{Fair union of streams}
 %\section{Fair, bounded disjunction}
 
-If there are multiple rules applicable to the current goal, Prolog tries them in order, exploring each to exhaustion before starting the next.
-If exploring a rule fails to terminate, later rules are not visited, and any potential solutions they could have generated are lost.
-%We might blame this on Prolog doing \emph{depth-first} search, which can get ``trapped'' exploring an infinite subtree and fail to return to explore its siblings.
-If we think of goal-directed search as yielding a stream of solutions, Prolog implements disjunction (between multiple rules) as stream concatenation.
-In Haskell, taking advantage of laziness to represent possibly-infinite streams, we might implement this like so:
+When multiple rules apply to the current goal, Prolog tries them in order, exploring each to exhaustion before starting the next.
+If exploring a rule fails to terminate, later rules are not visited, and potential solutions they might generate are lost.
+If we think of goal-directed search as yielding a stream of solutions, Prolog implements disjunction between rules as stream concatenation.
+In Haskell, using laziness to represent possibly-infinite streams, we might implement this like so:
 
 \begin{minted}{haskell}
 data Stream a = Empty
@@ -138,10 +139,7 @@ interleave (Yield x xs) ys = Yield x (interleave ys xs) -- swap focus to ys
 \end{minted}
 
 \noindent
-However, this is complete only if both streams are \emph{productive,} meaning
-%that evaluation to weak head normal form always yields a constructor (\hask{Empty} or \hask{Yield}) without looping indefinitely.
-%they do a finite amount of work (i.e.\ do not loop indefinitely) before yielding control to their caller by producing either \hask{Empty} or \hask{Yield}.
-they do not loop indefinitely without producing either \hask{Empty} or \hask{Yield}.
+However, this is complete only if both streams are \emph{productive}---they must not loop indefinitely without producing either \hask{Empty} or \hask{Yield}.
 It's easy to define unproductive streams recursively.
 For instance, the logic program:
 
@@ -161,12 +159,13 @@ theAnswer = interleave theAnswer (Yield 42 Empty)
 %% TODO: explain semantics, xs = xs ∪ {42}. Usual semantics is xs is the least set satisfying this, so xs = {42}; but *whatever* xs is, we definitely have 42 ∈ xs since 42 ∈ {42} ⇒ 42 ∈ xs ∪ {42} ⇒ 42 ∈ xs. But our approach here won't discover that; so it's not complete.
 
 \noindent
-There is no computability-theoretic reason for this unproductivity: we can search disjuncts in parallel, so the union of streams could in principle be productive if \emph{any} input stream is.
-However, neither concatenation nor interleaving has this property, and in fact, standard programming language evaluation orders (whether lazy or eager) cannot fairly interleave evaluation between two sub-expressions.
+From a computability perspective, this unproductivity is unnecessary: if we search in parallel, the union of streams is productive when \emph{any} input stream is.
+%There is no computability-theoretic reason for this unproductivity: we can search disjuncts in parallel, so the union of streams could in principle be productive if \emph{any} input stream is.
+However, neither concatenation nor interleaving has this property, and in fact, standard programming language evaluation orders (lazy or eager) cannot fairly interleave evaluation between two sub-expressions.
 We must pick one to examine first, and if it is unproductive, further evaluation is blocked.%
 \footnote{Another classic computable-yet-undefinable function is ``parallel or'' \hask{por :: Bool -> Bool -> Bool} implementing fair boolean disjunction, meaning \hask{(por True undefined) == (por undefined True) == True}.}
 %
-The standard solution, used in e.g.~\textmu{}Kanren~\citep{muKanren}, is to extend \hask{Stream} with an extra constructor, \hask{Later},\footnotemark\ which exposes the existence of intermediate evaluation steps without giving any further information:
+One solution, used in e.g.~\textmu{}Kanren~\citep{muKanren}, is to extend \hask{Stream} with a constructor \hask{Later} that exposes the existence of intermediate evaluation steps without giving any further information:\footnotemark
 
 \footnotetext{In \citet{muKanren} these are ``immature'' streams, represented as procedures of zero arguments.}
 
@@ -177,14 +176,51 @@ data Stream a = Empty
 \end{minted}
 
 \noindent
-This makes it easy to ensure \emph{all} definitions are productive: simply guard any recursion with \hask{Later}.\footnotemark{}
-For instance, if we replace the canonical unproductive recursive definition, \hask{let xs = xs}, with a guarded one, \hask{let xs = Later xs}, examining \ttt{xs} will no longer cause an unrecoverable infinite loop; instead it will immediately yield \hask{Later xs}.
-Thus \hask{Later} acts as an explicit signal to the consumer, permitting it to switch to evaluating something else.
-We can use this to implement fair stream union (\textmu{}Kanren's \ttt{mplus}):
-
-\footnotetext{There is a long line of work on type systems that ensure productivity by checking recursion is appropriately guarded in this fashion~\citetext{e.g.\ \citealp{DBLP:conf/lics/Nakano00}, \citealp{DBLP:journals/corr/abs-1208-3596},  \citealp{DBLP:conf/icfp/AtkeyM13}}.
+This allows \emph{any} definition to be productive:
+%This makes it easy to ensure \emph{all} definitions are productive:
+simply guard recursion with \hask{Later}.\footnote{
+There is a long line of work on type systems that ensure productivity by checking recursion is appropriately guarded in this fashion~\citetext{e.g.\ \citealp{DBLP:conf/lics/Nakano00}, \citealp{DBLP:journals/corr/abs-1208-3596},  \citealp{DBLP:conf/icfp/AtkeyM13}}.
   Such type systems would have caught our ``mistake'' in defining \texttt{theAnswer} recursively without guarding it.
 }
+%
+For instance, if we replace the unproductive \hask{let xs = xs} with the guarded \hask{let xs = Later xs}, examining \ttt{xs} no longer causes an unrecoverable infinite loop; instead it immediately yields \hask{Later xs}.
+Thus \hask{Later} acts as an explicit signal to the consumer, permitting it to switch to evaluating something else.
+We can use this to implement fair stream union (\textmu{}Kanren's \ttt{mplus}):\footnotemark{}
+
+\footnotetext{
+%In fact, this is more than merely productive.
+%We are actually using a slightly stronger property than productivity here.
+Since \ttt{union} concatenates on \hask{Yield} and interleaves on \hask{Later}, and concatenation is an incomplete search strategy for infinite lists, \ttt{union} is complete only for streams which \hask{Yield} at most finitely often between \hask{Later}s.
+Fortunately, guarding recursion with \hask{Later} also guarantees this property, which we might call ``strong productivity'':
+%
+productivity means we do a finite amount of work before we yield control to our caller;
+%If we regard all constructors as yielding control, we get the usual meaning of productivity in lazy languages;
+%In lazy languages, all constructors yield control;
+strong productivity replaces ``yield control'' with ``yield \hask{Later}.''
+%
+For this reason, in an eager language, only \hask{Later}'s argument must be thunked, not \hask{Yield}'s.
+  Likewise, in type theories for guarded recursion, only \hask{Later}'s argument must be guarded with a ``later'' modality.
+%  Of course, it can be beneficial for performance to also delay evaluation of the arguments to \hask{Yield}, as typical miniKanren implementations do.
+}
+
+%% \footnotetext{
+%% %In fact, this is more than merely productive.
+%% %We are actually using a slightly stronger property than productivity here.
+%% Observe that \ttt{union} is effectively ``concatenate on \hask{Yield}, interleave on \hask{Later}.''
+%% Since concatenation is an incomplete search strategy for infinite lists, \ttt{union} is complete only for {``strongly productive''} streams, which have at most finitely many \hask{Yield}s between \hask{Later}s.
+%% %
+%% Fortunately, since infinity comes from recursion, guarding recursion with \hask{Later} also guarantees strong productivity.
+%% %This is no harder to ensure than productivity (infinity comes only from recursion; so guard all recursion with \hask{Later}), but it is formally stronger.
+
+%% Made precise, productivity means we do a finite amount of work before we yield control to our caller;
+%% %If we regard all constructors as yielding control, we get the usual meaning of productivity in lazy languages;
+%% %In lazy languages, all constructors yield control;
+%% strong productivity strengthens ``yield control'' to ``yield \hask{Later}.''
+%% %
+%% For this reason, in an eager language, only \hask{Later}'s argument needs to be thunked, not \hask{Yield}'s.
+%%   Likewise, in type theories for guarded recursion, it is \hask{Later}'s argument which must be guarded with a ``later'' modality.
+%% %  Of course, it can be beneficial for performance to also delay evaluation of the arguments to \hask{Yield}, as typical miniKanren implementations do.
+%% }
 
 \begin{minted}{haskell}
 union Empty        ys = ys
@@ -202,27 +238,30 @@ theAnswer = union (Later theAnswer) (Yield 42 Empty)
 -- theAnswer = Later (Yield 42 theAnswer)
 \end{minted}
 
+%% \noindent
+%% %In fact, this is more than merely productive.
+%% %We are actually using a slightly stronger property than productivity here.
+%% Observe that \ttt{union} is effectively ``concatenate on \hask{Yield}, interleave on \hask{Later}.''
+%% Since concatenation is an incomplete search strategy for infinite lists, \ttt{union} is complete only for {``strongly productive''} streams with at most finitely many \hask{Yield}s between \hask{Later}s.
+%% %This is no harder to ensure than productivity (infinity comes only from recursion; so guard all recursion with \hask{Later}), but it is formally stronger.
+%% %
+%% Productivity means {we do a finite amount of work before yielding control to our caller.}
+%% %If we regard all constructors as yielding control, we get the usual meaning of productivity in lazy languages;
+%% %In lazy languages, all constructors yield control;
+%% Strong productivity strengthens ``yielding control'' to ``yielding \hask{Later}.''\footnotemark{}
+%% %
+%% Since infinity comes from recursion, guarding recursion with \hask{Later} also guarantees strong productivity.
+
+%% \footnotetext{For this reason, in an eager language, only \hask{Later}'s argument needs to be thunked, not \hask{Yield}'s.
+%%   Likewise, in type theories for guarded recursion, it is \hask{Later}'s argument which must be guarded with a ``later'' modality.
+%% %  Of course, it can be beneficial for performance to also delay evaluation of the arguments to \hask{Yield}, as typical miniKanren implementations do.
+%% }
+
 \noindent
-%In fact, this is more than merely productive.
-%We are actually using a slightly stronger property than productivity here.
-Observe that \ttt{union} is effectively ``concatenate on \hask{Yield}, interleave on \hask{Later}''.
-Since concatenation is an incomplete search strategy for infinite lists, \ttt{union} is complete only for {``strongly productive''} streams with at most finitely many \hask{Yield}s between successive \hask{Later}s.
-%This is no harder to ensure than productivity (infinity comes only from recursion; so guard all recursion with \hask{Later}), but it is formally stronger.
-Since all infinity comes from recursion, guarding recursion with \hask{Later} also guarantees strong productivity.
-%
-Productivity means \emph{we do a finite amount of work before yielding control to our caller.}
-If we regard all constructors as yielding control, we get the usual meaning of productivity in lazy languages;
-if we instead say that only \hask{Later} yields control, we get strong productivity.\footnotemark
-
-\footnotetext{For this reason, in an eager language, only \hask{Later}'s argument needs to be thunked, not \hask{Yield}'s.
-  Likewise, in type theories for guarded recursion, it is \hask{Later}'s argument which must be guarded with a ``later'' modality.
-%  Of course, it can be beneficial for performance to also delay evaluation of the arguments to \hask{Yield}, as typical miniKanren implementations do.
-}
-
-Fair disjunction, then, is accomplished by bounding the work any stream does before yielding control, allowing us to fairly interleave multiple streams.
+Fair disjunction, then, is accomplished by bounding the work a stream does before handing control to the next stream.
 In the next two sections, we'll apply a similar trick to intersection rather than union.
 In \cref{sec:unfair-intersection} we will show that the leapfrog intersection of seekable iterators used in the worst-case optimal join algorithm Leapfrog Triejoin~\citep{lftj} is \emph{not} fair.
-To remedy this, in \cref{sec:fair-intersection} we show how to extend the seekable iterator interface to allow \emph{bounded interleaving} between sub-iterators.
+To remedy this, in \cref{sec:fair-intersection} we show how to extend the seekable iterator interface to allow \emph{bounded interleaving} between sub-iterators. \todo{TODO: rephrase `bounded interleaving'?}
 
 
 %% ---------- SCRAPS, TODO: REUSE ----------
@@ -271,9 +310,12 @@ data Iter k v = Empty
 \end{minted}
 
 \noindent
-A seekable iterator, \hask{Iter k v}, is like a stream of key-value pairs, \hask{Stream (k,v)}, except that (a) it yields pairs in ascending key order, and (b) rather than the \emph{entire} remainder of the stream, \hask{Yield} produces a function \hask{seek :: k -> Iter k v} which seeks forward in it, i.e.\ \ttt{seek target} iterates over the remaining pairs with keys \ttt{k >= target}.
+A seekable iterator, \hask{Iter k v}, is like a stream of key-value pairs, \hask{Stream (k,v)}, except that (a) it yields pairs in ascending key order, and (b) rather than the entire remainder of the stream, \hask{Yield} produces a function \hask{seek :: k -> Iter k v}
+%which seeks forward, i.e.\
+such that
+\ttt{seek target} iterates over the remaining pairs with keys \ttt{k >= target}.
 %
-To recover the entire remainder, we simply pass \ttt{seek} the just-visited key; this lets us iterate over all elements of the stream:
+To recover the entire remainder, we pass \ttt{seek} the just-visited key; this lets us iterate over all elements of the stream:
 
 \begin{minted}{haskell}
 toSorted :: Iter k v -> [(k, v)]
@@ -282,7 +324,7 @@ toSorted (Yield k v seek) = (k,v) : toSorted (seek k)
 \end{minted}
 
 \noindent
-Given a sorted list \hask{[(k, v)]}, we can easily produce a seekable iterator for it, although seeking will not be efficient since Haskell lists allow only linear, in-order access.
+We can easily turn a sorted list \hask{[(k, v)]} into a seekable iterator, although seeking will not be efficient since Haskell lists allow only linear, in-order access.
 We could use a more appropriate data structure, such as a sorted array or balanced tree, but omit this as it is not crucial to our explanation:
 
 \begin{minted}{haskell}
@@ -293,7 +335,7 @@ fromSorted ((k,v) : rest) = Yield k v seek
 \end{minted}
 
 \noindent
-Finally, we can intersect two seekable iterators by leapfrogging: repeatedly advance the iterator at the smaller key towards the higher, until either both iterators reach the same key or one is exhausted:
+We can intersect two seekable iterators by leapfrogging: repeatedly advance the iterator at the smaller key towards the higher, until either both iterators reach the same key or one is exhausted:
 
 \begin{minted}{haskell}
 intersect :: Ord k => Iter k a -> Iter k b -> Iter k (a,b)
@@ -348,7 +390,7 @@ By contrast, intersecting \ttt{odds} with \ttt{ends} almost immediately skips to
   However, had we used sorted arrays with binary or galloping search, or balanced trees, there would be a true asymptotic speed-up for the reasons we describe.
 }
 
-The problem is that \ttt{intersect} does not (and with our current \hask{Iter} interface, \emph{cannot}) fairly interleave work between its arguments.
+The problem is that \ttt{intersect} does not (and with our \hask{Iter} interface, \emph{cannot}) fairly interleave work between its arguments.
 Instead, like \ttt{interleave}, it blocks first on one, then the other.
 For this reason leapfrog intersection is usually formulated as an $n$-way operation (e.g.\ see \citet{lftj}).
 %, with the expectation that it will be applied ``flat'' to all intersected iterators, rather than ``nested''---the output of leapfrog intersection, despite presenting a seekable iterator interface, cannot be used as input to leapfrog intersection without risking performance loss.
@@ -357,8 +399,8 @@ Our binary \ttt{intersect} fails to composably capture the essence of this algor
 Evaluating \ttt{(evens `intersect` odds) `intersect` ends} immediately waits for \ttt{evens `intersect` odds} to find a key, which takes $O(n)$ work (where $n$ is the size of \ttt{evens}/\ttt{odds}).
 This blocks information exchange between \ttt{ends} and \ttt{evens}/\ttt{odds} that would let us jump straight to the end in $O(1)$ time.
 
-However, all is not lost, nor do we need to move to an $n$-way intersection primitive.
-As with stream union, we can overcome this limitation by changing our interface and \emph{bounding} how much work we do.
+However, all is not lost, nor must we move to an $n$-way intersection primitive.
+As with stream union, we can side-step the issue by changing our interface to \emph{bound} how much work we do.
 
 
 \section{Fair intersection of seekable iterators}
@@ -406,11 +448,11 @@ It simplifies the definition of intersection if seeking is idempotent; thus we r
 %Unlike in \hask{Iter}, we require this seek function to consider the remainder of the sequence \emph{including} the current key, rather than dropping it; thus repeatedly seeking to a given bound is idempotent, which simplifies the definition of intersection.
 We must take this into account when defining \ttt{toSorted}:
 
-\begin{minted}[linenos]{haskell}
+\begin{minted}{haskell}
 toSorted :: Seek k v -> [(k,v)]
 toSorted (Seek (Bound Done) _)    = []
+toSorted (Seek (Bound p)    seek) = toSorted (seek p)
 toSorted (Seek (Found k v)  seek) = (k,v) : toSorted (seek (Greater k))
-toSorted (Seek (Bound k)    seek) = toSorted (seek k)
 \end{minted}
 
 \noindent
@@ -439,10 +481,10 @@ Using \ttt{satisfies} we can define \ttt{fromSorted}:
 
 \begin{minted}{haskell}
 fromSorted :: Ord k => [(k,v)] -> Seek k v
-fromSorted l = Seek posn seek
-  where posn = case l of (k,v):_ -> Found k v
-                         []      -> Bound Done
-        seek target = fromSorted (dropWhile (not . satisfies target . fst) l)
+fromSorted l = Seek posn seek where
+  posn = case l of (k,v):_ -> Found k v
+                   []      -> Bound Done
+  seek target = fromSorted (dropWhile (not . satisfies target . fst) l)
 \end{minted}
 
 \noindent
@@ -559,16 +601,25 @@ intersect s t = Seek posn' seek' where
 
 \section{Related and future work}
 
-Our \hask{Seek} interface is effectively a variant of the \emph{indexed streams} of \citet{indexed-streams}.
-Their interface replaces the \hask{Position} of an iterator with three values: its \emph{index} (\emph{key} in our terminology), a \emph{ready flag} indicating whether it has a value, and its \emph{value} (which should only be accessed when the ready flag is set).
+Intersection is a special case of relational join, and the technique described here extends to full conjunctive queries via \emph{nested} intersections.
+This is the `trie' in Leapfrog Triejoin: for instance, a finite ternary relation $R \subseteq A \times B \times C$ can be represented as a 3-level trie, i.e.\ a nested seekable iterator \hask{Seek a (Seek b (Seek c ()))}.
+By intersecting on each join column successively, we implement a worst-case optimal join.
+Worst-case optimal joins therefore seem to be a form of \emph{fair conjunction,} a connection which we are not sure has been noticed previously.
+
+These nested seekable iterators also support disjunction/union, similar to the merge step in mergesort.
+We believe it is possible to extend this to existential quantification, essentially a disjunction over an entire trie level, using a priority queue of seekable iterators sorted by position.
+Moreover, by changing the lowest level of the trie from the unit type \ttt{()} to some other type \ttt{v}, e.g.\ \hask{Seek a (Seek b (Seek c v))}, nested seekable iterators support \emph{weighted logic programming}, where tuples of a relation have an associated value.
+Conventionally these values are drawn from a semiring: conjunction multiplies, while disjunction and existentials sum.
+
+Together these amount to an implementation of tensor algebra.
+Indeed, our \hask{Seek} interface is effectively a variant of the \emph{indexed streams}~\citet{indexed-streams} use as a compiler intermediate representation for sparse tensor algebra.
+Indexed streams replace the \hask{Position} of an iterator with three values: its \emph{index} (\emph{key} in our terminology), a \emph{ready flag} indicating whether it has found a value, and its \emph{value} (which should only be accessed when the ready flag is set).
 In place of \hask{seek} they have a \emph{skip} function which takes a key and a flag indicating whether to use \hask{Atleast} or \hask{Greater} semantics.
 \todo{all their key/index types are bounded so they don't need \hask{Done}---is this accurate?}
 
-\todo{by repeatedly intersecting on different variables (trie style), we get worst-case optimal joins!}
-
-\todo{this is a form of fair conjunction.}
-
-\todo{this can't handle arbitrary recursion; we'd need to introduce a time delay element. (Curiously, this might bring us closer to Datalog, which finds fixed points by iteration through an arbitrary time dimension!)}
+To extend to full weighted logic programming, however, we need \emph{recursion,} which is hard to reconcile with the sorted nature of seekable iterators: self-reference means the existence of a larger key might imply the existence of a smaller one, so we may discover a key exists when it's too late to produce it.
+One approach might be to introduce an artifical time dimension, e.g.\ to represent a relation by a sequence of seekable iterators, representing a monotonically growing set, with recursion implemented as feedback with delay.
+This resembles a na\"ive implementation of Datalog; perhaps semina\"ive evaluation is also possible.
 
 
 %% ---------- BIBLIOGRAPHY ----------
