@@ -107,7 +107,7 @@
 \begin{document}
 
 \begin{abstract}
-  {miniKanren}'s key semantic advance over Prolog is to implement a complete yet efficient search strategy, fairly interleaving execution between disjuncts.
+  miniKanren's key semantic advance over Prolog is to implement a complete yet efficient search strategy, fairly interleaving execution between disjuncts.
   This fairness is accomplished by bounding how much work is done exploring one disjunct before switching to the next.
   We show that the same idea---fairness via bounded work---underlies an elegant compositional approach to implementing worst-case optimal joins using a seekable iterator interface, suitable for shallow embedding in functional languages.
 \end{abstract}
@@ -159,13 +159,13 @@ theAnswer = interleave theAnswer (Yield 42 Empty)
 %% TODO: explain semantics, xs = xs ∪ {42}. Usual semantics is xs is the least set satisfying this, so xs = {42}; but *whatever* xs is, we definitely have 42 ∈ xs since 42 ∈ {42} ⇒ 42 ∈ xs ∪ {42} ⇒ 42 ∈ xs. But our approach here won't discover that; so it's not complete.
 
 \noindent
-From a computability perspective, this unproductivity is unnecessary: if we search in parallel, the union of streams is productive when \emph{any} input stream is.
+From a computability perspective, this unproductivity is unnecessary: if we search in parallel, the union of streams can yield if at least one of its input streams can.
 %There is no computability-theoretic reason for this unproductivity: we can search disjuncts in parallel, so the union of streams could in principle be productive if \emph{any} input stream is.
 However, neither concatenation nor interleaving has this property, and in fact, standard programming language evaluation orders (lazy or eager) cannot fairly interleave evaluation between two sub-expressions.
 We must pick one to examine first, and if it is unproductive, further evaluation is blocked.%
 \footnote{Another classic computable-yet-undefinable function is ``parallel or'' \hask{por :: Bool -> Bool -> Bool} implementing fair boolean disjunction, meaning \hask{(por True undefined) == (por undefined True) == True}.}
 %
-One solution, used in e.g.~\textmu{}Kanren~\citep{muKanren}, is to extend \hask{Stream} with a constructor \hask{Later} that exposes the existence of intermediate evaluation steps without giving any further information:\footnotemark
+One solution, used in e.g.\ \textmu{}Kanren~\citep{muKanren}, is to extend \hask{Stream} with a constructor \hask{Later} that exposes the existence of intermediate evaluation steps without giving any further information:\footnotemark
 
 \footnotetext{In \citet{muKanren} these are ``immature'' streams, represented as procedures of zero arguments.}
 
@@ -176,16 +176,18 @@ data Stream a = Empty
 \end{minted}
 
 \noindent
-This allows \emph{any} definition to be productive:
 %This makes it easy to ensure \emph{all} definitions are productive:
+This allows any definition to be productive:
 simply guard recursion with \hask{Later}.\footnote{
 There is a long line of work on type systems that ensure productivity by checking recursion is appropriately guarded in this fashion~\citetext{e.g.\ \citealp{DBLP:conf/lics/Nakano00}, \citealp{DBLP:journals/corr/abs-1208-3596},  \citealp{DBLP:conf/icfp/AtkeyM13}}.
   Such type systems would have caught our ``mistake'' in defining \texttt{theAnswer} recursively without guarding it.
 }
 %
-For instance, if we replace the unproductive \hask{let xs = xs} with the guarded \hask{let xs = Later xs}, examining \ttt{xs} no longer causes an unrecoverable infinite loop; instead it immediately yields \hask{Later xs}.
+For instance, if we replace the unproductive \hask{let xs = xs} with the guarded \hask{let xs = Later xs}, examining \ttt{xs} no longer causes an unrecoverable infinite loop, instead immediately yielding \hask{Later xs}.
 Thus \hask{Later} acts as an explicit signal to the consumer, permitting it to switch to evaluating something else.
-We can use this to implement fair stream union (\textmu{}Kanren's \ttt{mplus}):\footnotemark{}
+%Thus \hask{Later} explicitly yields control to the consumer, permitting it to switch to evaluating something else.
+%The purpose of \hask{Later} is to yield control to the consumer, so it may switch to evaluating something else.
+This lets us implement fair stream union (\textmu{}Kanren's \ttt{mplus}):\footnotemark{}
 
 \footnotetext{
 %In fact, this is more than merely productive.
@@ -382,9 +384,7 @@ We do 7,777,777 units of work before we determine the intersection is empty.
 %
 By contrast, intersecting \ttt{odds} with \ttt{ends} almost immediately skips to the end of both relations.
 (This occurs even though we are \emph{not} materializing any intermediate results.)%
-\footnotemark{}
-
-\footnotetext{
+\footnote{\label{fn:white-lie}%
   We are telling a white lie here: because we use Haskell lists, seeking is linear-time, and there is no asymptotic slow-down.
   We are instead observing the difference between an \emph{interpreted} inner loop (\ttt{intersect}, loaded at the GHCi repl) and a \emph{compiled} one (\ttt{dropWhile} from the standard library).
   However, had we used sorted arrays with binary or galloping search, or balanced trees, there would be a true asymptotic speed-up for the reasons we describe.
@@ -511,9 +511,15 @@ intersect s t = Seek posn' seek' where
 \end{minted}
 
 \noindent
-\todo{TODO: ok now what do I say? Oh, obviously I test this on my previous example: evens, odds, ends.
-  UNFORTUNATELY, this (a) runs straight into the white lie I told earlier---it's super slow unless we compile it; (b) when we compile, the three-way intersection is indeed faster than (intersect evens odds), which is good, but (c) why should it be? it's the same asymptotic complexity! it appears that dropWhile is ~3.5--4$\times$ faster than ping-ponging between evens \& odds, which is... a larger constant factor than I expected, but okay.
-}
+The natural next step is to try our evens-odds-ends example.
+Unfortunately, we now run into the ``white lie'' noted in footnote 5 in \cref{fn:white-lie}:
+we cannot expect an asymptotic speedup while we are still using linear-access Haskell lists; the actual effects we saw there were due to interpretation overhead.
+I have omitted the code for lack of space and time, but in a small experiment with Haskell's Arrays package, compiled with \ttt{ghc -O}, on arrays of 30 million elements, our na\"ive \hask{Iter} approach from \cref{sec:unfair-intersection} took 1.2 seconds to enumerate \ttt{(evens `intersect` odds) `intersect` evens}, while using our \hask{Seek} iterators (or reassociating) took less than a millisecond.
+
+%% %% TODO FIXME: FINISH THIS
+%% \todo{TODO: ok now what do I say? Oh, obviously I test this on my previous example: evens, odds, ends.
+%%   UNFORTUNATELY, this (a) runs straight into the white lie I told earlier---it's super slow unless we compile it; (b) when we compile, the three-way intersection is indeed faster than (intersect evens odds), which is good, but (c) why should it be? it's the same asymptotic complexity! it appears that dropWhile is ~3.5--4$\times$ faster than ping-ponging between evens \& odds, which is... a larger constant factor than I expected, but okay.
+%% }
 
 
 %% \begin{figure}
@@ -612,7 +618,7 @@ Moreover, by changing the lowest level of the trie from the unit type \ttt{()} t
 Conventionally these values are drawn from a semiring: conjunction multiplies, while disjunction and existentials sum.
 
 Together these amount to an implementation of tensor algebra.
-Indeed, our \hask{Seek} interface is effectively a variant of the \emph{indexed streams}~\citet{indexed-streams} use as a compiler intermediate representation for sparse tensor algebra.
+Indeed, our \hask{Seek} interface is effectively a variant of the \emph{indexed streams}~\citet{indexed-streams} use as a tensor algebra compiler intermediate representation.
 Indexed streams replace the \hask{Position} of an iterator with three values: its \emph{index} (\emph{key} in our terminology), a \emph{ready flag} indicating whether it has found a value, and its \emph{value} (which should only be accessed when the ready flag is set).
 In place of \hask{seek} they have a \emph{skip} function which takes a key and a flag indicating whether to use \hask{Atleast} or \hask{Greater} semantics.
 \todo{all their key/index types are bounded so they don't need \hask{Done}---is this accurate?}

@@ -1,6 +1,23 @@
 import Data.Array (Array)
 import Data.Array.IArray
 
+import Text.Printf
+import System.CPUTime
+import System.IO (hFlush, stdout)
+
+time :: IO t -> IO (Double, t)
+time k = do
+  start_ps <- getCPUTime --in picoseconds
+  result <- k
+  end_ps <- getCPUTime
+  let diff_s = fromIntegral (end_ps - start_ps) / (10^12)
+  return (diff_s, result)
+
+printTime :: IO t -> IO t
+printTime k = do (time, result) <- time k
+                 printf "Computation time: %0.3fs\n" time
+                 return result
+
 data Position k v = Found k v | Bound (Bound k) deriving Show
 data Bound k = Atleast k | Greater k | Done deriving (Eq, Show)
 
@@ -22,17 +39,11 @@ toSorted (Seek (Bound Done) _)   = []
 toSorted (Seek (Bound p)   seek) = toSorted (seek p)
 toSorted (Seek (Found k v) seek) = (k,v) : toSorted (seek (Greater k))
 
-fromSorted :: Ord k => [(k,v)] -> Seek k v
-fromSorted l = Seek posn seek where
-  posn = case l of (k,v):_ -> Found k v
-                   []      -> Bound Done
-  seek target = fromSorted (dropWhile (not . satisfies target . fst) l)
-
 -- fromSorted :: Ord k => [(k,v)] -> Seek k v
--- fromSorted l = Seek posn seek
---   where posn = case l of [] -> Bound Done
---                          (k,v):_ -> Found k v
---         seek target = fromSorted (dropWhile (not . satisfies target . fst) l)
+-- fromSorted l = Seek posn seek where
+--   posn = case l of (k,v):_ -> Found k v
+--                    []      -> Bound Done
+--   seek target = fromSorted (dropWhile (not . satisfies target . fst) l)
 
 bound :: Seek k v -> Bound k
 bound (Seek (Found k _) _) = Atleast k
@@ -51,20 +62,61 @@ evens = fromSorted [(x, "even") | x <- [0, 2 .. n]]
 odds  = fromSorted [(x, "odd")  | x <- [1, 3 .. n]]
 ends  = fromSorted [(x, "end")  | x <- [0,      n]]
 
---main = print $ length $ toSorted $ evens `intersect` odds `intersect` ends
-main = do
-  print $ posn evens
-  print $ posn odds
-  print $ posn ends
-  putStrLn "evens intersect odds intersect ends..."
-  print $ length $ toSorted $ evens `intersect` odds `intersect` ends
-  putStrLn "evens intersect odds..."
-  print $ length $ toSorted $ evens `intersect` odds
+{-# NOINLINE swizzle #-}
+swizzle :: Ord k => Seek k a -> Seek k b -> IO ()
+swizzle xs ys = printTime $ print $ length $ toSorted $ xs `intersect` ys
+{-# NOINLINE swizzle2 #-}
+swizzle2 xs ys zs = printTime $ print $ length $ toSorted $ (xs `intersect` ys) `intersect` zs
+{-# NOINLINE swizzle3 #-}
+swizzle3 xs ys zs = printTime $ print $ length $ toSorted $ xs `intersect` (ys `intersect` zs)
 
--- fromSorted :: Ord k => [(k,v)] -> Seek k v
--- fromSorted l = arr `seq` fromArray arr bounds
---   where bounds = (0, length l)
---         arr = listArray bounds l
+main = do
+  putStr "odds ∩ ends... "; hFlush stdout
+  swizzle odds ends
+  putStr "odds ∩ ends... "; hFlush stdout
+  swizzle odds ends
+  putStr "odds ∩ ends... "; hFlush stdout
+  swizzle odds ends
+
+  putStr "evens ∩ odds... "; hFlush stdout
+  swizzle evens odds
+  putStr "evens ∩ odds... "; hFlush stdout
+  swizzle evens odds
+  putStr "evens ∩ odds... "; hFlush stdout
+  swizzle evens odds
+
+  putStr "evens ∩ (odds ∩ ends)... "; hFlush stdout
+  swizzle3 evens odds ends
+  putStr "evens ∩ (odds ∩ ends)... "; hFlush stdout
+  swizzle3 evens odds ends
+  putStr "evens ∩ (odds ∩ ends)... "; hFlush stdout
+  swizzle3 evens odds ends
+
+  putStr "(evens ∩ odds) ∩ ends... "; hFlush stdout
+  swizzle2 evens odds ends
+  putStr "(evens ∩ odds) ∩ ends... "; hFlush stdout
+  swizzle2 evens odds ends
+  putStr "(evens ∩ odds) ∩ ends... "; hFlush stdout
+  swizzle2 evens odds ends
+
+-- --main = print $ length $ toSorted $ evens `intersect` odds `intersect` ends
+-- main = do
+--   print $ posn evens
+--   print $ posn odds
+--   print $ posn ends
+--   putStr "evens ∩ odds... "; hFlush stdout
+--   printTime $ print $ length $ toSorted $ evens `intersect` odds
+--   putStr "evens ∩ odds... "; hFlush stdout
+--   printTime $ print $ length $ toSorted $ evens `intersect` odds
+--   putStr "(evens ∩ odds) ∩ ends... "; hFlush stdout
+--   printTime $ print $ length $ toSorted $ (evens `intersect` odds) `intersect` ends
+--   putStr "evens ∩ (odds ∩ ends)... "; hFlush stdout
+--   printTime $ print $ length $ toSorted $ evens `intersect` (odds `intersect` ends)
+
+fromSorted :: Ord k => [(k,v)] -> Seek k v
+fromSorted l = arr `seq` fromArray arr bounds
+  where bounds = (0, length l)
+        arr = listArray bounds l
 
 fromArray :: Ord k => Array Int (k, v) -> (Int, Int) -> Seek k v
 fromArray arr (lo, hi) = self where
@@ -74,13 +126,13 @@ fromArray arr (lo, hi) = self where
   sek tgt = fromArray arr (lo', hi)
     where lo' = gallop (satisfies tgt . fst . (arr !)) lo hi
 
-fromIArray :: (IArray a k, Ord k) => a Int k -> Seek k ()
-fromIArray arr = go lo where
-  (lo, hi) = bounds arr
-  go i = Seek pos sek where
-    pos | i >= hi   = Bound Done
-        | otherwise = Found k () where k = arr ! i
-    sek tgt = go $ gallop (satisfies tgt . (arr !)) i hi
+-- fromIArray :: (IArray a k, Ord k) => a Int k -> Seek k ()
+-- fromIArray arr = go lo where
+--   (lo, hi) = bounds arr
+--   go i = Seek pos sek where
+--     pos | i >= hi   = Bound Done
+--         | otherwise = Found k () where k = arr ! i
+--     sek tgt = go $ gallop (satisfies tgt . (arr !)) i hi
 
 -- galloping search
 gallop :: (Int -> Bool) -> Int -> Int -> Int
