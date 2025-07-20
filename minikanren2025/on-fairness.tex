@@ -236,7 +236,7 @@ We can now define \ttt{theAnswer} completely, using \hask{Later} to guard the re
 \begin{minted}{haskell}
 theAnswer :: Stream Int
 theAnswer = union (Later theAnswer) (Yield 42 Empty)
--- Equivalent to infinitely interleaving ‘Later’ and ‘Yield 42’:
+-- Equivalent to endlessly interleaving ‘Later’ with ‘Yield 42’:
 -- theAnswer = Later (Yield 42 theAnswer)
 \end{minted}
 
