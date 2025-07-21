@@ -1,5 +1,4 @@
-import Data.Array (Array)
-import Data.Array.IArray
+import Data.Array
 
 import Text.Printf
 import System.CPUTime
@@ -39,11 +38,11 @@ toSorted (Seek (Bound Done) _)   = []
 toSorted (Seek (Bound p)   seek) = toSorted (seek p)
 toSorted (Seek (Found k v) seek) = (k,v) : toSorted (seek (Greater k))
 
--- fromSorted :: Ord k => [(k,v)] -> Seek k v
--- fromSorted l = Seek posn seek where
---   posn = case l of (k,v):_ -> Found k v
---                    []      -> Bound Done
---   seek target = fromSorted (dropWhile (not . satisfies target . fst) l)
+fromSorted :: Ord k => [(k,v)] -> Seek k v
+fromSorted l = Seek posn seek where
+  posn = case l of (k,v):_ -> Found k v
+                   []      -> Bound Done
+  seek target = fromSorted (dropWhile (not . satisfies target . fst) l)
 
 bound :: Seek k v -> Bound k
 bound (Seek (Found k _) _) = Atleast k
@@ -58,9 +57,9 @@ intersect s t = Seek posn' seek' where
     t' = seek t (bound s') -- leapfrog optimization; could be (seek2 k) instead
 
 n = 30_000_000
-evens = fromSorted [(x, "even") | x <- [0, 2 .. n]]
-odds  = fromSorted [(x, "odd")  | x <- [1, 3 .. n]]
-ends  = fromSorted [(x, "end")  | x <- [0,      n]]
+evens = fromSortedArray [(x, "even") | x <- [0, 2 .. n]]
+odds  = fromSortedArray [(x, "odd")  | x <- [1, 3 .. n]]
+ends  = fromSortedArray [(x, "end")  | x <- [0,      n]]
 
 {-# NOINLINE swizzle #-}
 swizzle :: Ord k => Seek k a -> Seek k b -> IO ()
@@ -113,26 +112,27 @@ main = do
 --   putStr "evens ∩ (odds ∩ ends)... "; hFlush stdout
 --   printTime $ print $ length $ toSorted $ evens `intersect` (odds `intersect` ends)
 
-fromSorted :: Ord k => [(k,v)] -> Seek k v
-fromSorted l = arr `seq` fromArray arr bounds
-  where bounds = (0, length l)
-        arr = listArray bounds l
+fromSortedArray :: Ord k => [(k,v)] -> Seek k v
+fromSortedArray l = go 0 where
+  hi = length l
+  arr = listArray (0, hi) l
+  go lo = Seek posn seek where
+    posn | lo >= hi  = Bound Done
+         | otherwise = Found k v where (k,v) = arr ! lo
+    seek tgt = go $ gallop (satisfies tgt . fst . (arr !)) lo hi
 
-fromArray :: Ord k => Array Int (k, v) -> (Int, Int) -> Seek k v
-fromArray arr (lo, hi) = self where
-  self = Seek pos sek
-  pos | lo >= hi  = Bound Done
-      | otherwise = Found k v where (k,v) = arr ! lo
-  sek tgt = fromArray arr (lo', hi)
-    where lo' = gallop (satisfies tgt . fst . (arr !)) lo hi
+-- fromSorted :: Ord k => [(k,v)] -> Seek k v
+-- fromSorted l = fromArray arr bounds
+--   where bounds = (0, length l)
+--         arr = listArray bounds l
 
--- fromIArray :: (IArray a k, Ord k) => a Int k -> Seek k ()
--- fromIArray arr = go lo where
---   (lo, hi) = bounds arr
---   go i = Seek pos sek where
---     pos | i >= hi   = Bound Done
---         | otherwise = Found k () where k = arr ! i
---     sek tgt = go $ gallop (satisfies tgt . (arr !)) i hi
+-- fromArray :: Ord k => Array Int (k, v) -> (Int, Int) -> Seek k v
+-- fromArray arr (lo, hi) = self where
+--   self = Seek pos sek
+--   pos | lo >= hi  = Bound Done
+--       | otherwise = Found k v where (k,v) = arr ! lo
+--   sek tgt = fromArray arr (lo', hi)
+--     where lo' = gallop (satisfies tgt . fst . (arr !)) lo hi
 
 -- galloping search
 gallop :: (Int -> Bool) -> Int -> Int -> Int
