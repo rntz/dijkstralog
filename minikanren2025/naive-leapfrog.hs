@@ -6,11 +6,6 @@ import System.IO (hFlush, stdout)
 data Iter k v = Empty
               | Yield k v (k -> Iter k v)
 
-fromSorted :: Ord k => [(k, v)] -> Iter k v
-fromSorted [] = Empty
-fromSorted ((k,v) : rest) = Yield k v seek
-  where seek k' = fromSorted (dropWhile ((< k') . fst) rest)
-
 toSorted :: Iter k v -> [(k, v)]
 toSorted Empty = []
 toSorted (Yield k v s) = (k,v) : toSorted (s k)
@@ -23,6 +18,11 @@ intersect s@(Yield k1 x s') t@(Yield k2 y t') =
     LT -> intersect (s' k2) t -- s < t, so seek s toward t
     GT -> intersect s (t' k1) -- t < s, so seek t toward s
     EQ -> Yield k1 (x,y) (\k' -> s' k' `intersect` t' k')
+
+fromSorted :: Ord k => [(k, v)] -> Iter k v
+fromSorted [] = Empty
+fromSorted ((k,v) : rest) = Yield k v seek
+  where seek k' = fromSorted (dropWhile ((< k') . fst) rest)
 
 xs = fromSorted [(1, "one"), (2, "two"), (3, "three")]
 ys = fromSorted [(1, "wun"), (3, "tres")]

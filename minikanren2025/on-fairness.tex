@@ -612,6 +612,8 @@ import Text.Printf
 import System.CPUTime
 import System.IO (hFlush, stdout)
 
+... -- Definitions of `data Iter`, `toSorted`, and `intersect` from earlier in paper.
+
 n = 30_000_000
 evens = fromSortedArray [(x, "even") | x <- [0, 2 .. n]]
 odds  = fromSortedArray [(x, "odd")  | x <- [1, 3 .. n]]
@@ -669,10 +671,10 @@ fromSortedArray :: Ord k => [(k,v)] -> Seek k v
 fromSortedArray l = go 0 where
   hi = length l
   arr = listArray (0, hi) l
-  go lo = Seek pos sek where
-    pos | lo >= hi  = Bound Done
-        | otherwise = Found k v where (k,v) = arr ! lo
-    sek tgt = go $ gallop (satisfies tgt . fst . (arr !)) lo hi
+  go lo = Seek posn seek where
+    posn | lo >= hi  = Bound Done
+         | otherwise = Found k v where (k,v) = arr ! lo
+    seek tgt = go $ gallop (satisfies tgt . fst . (arr !)) lo hi
   \end{minted}
   \caption{fromSortedArray for \hask{Seek}}
   \label{fig:seek-fromsortedarray}
