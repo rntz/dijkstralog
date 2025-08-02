@@ -44,23 +44,16 @@ toSorted Empty = []
 toSorted (Yield k (Just v) seek) = (k,v) : toSorted (seek (Greater k))
 toSorted (Yield k Nothing seek) = toSorted $ seek (Atleast k)
 
-fromSorted :: Ord k => [(k,v)] -> Seek k v
-fromSorted [] = Empty
-fromSorted l@((k,v):_) = Yield k (Just v) seek where
-  seek tgt = fromSorted $ dropWhile (not . satisfies tgt . fst) l
-
--- bound :: Seek k v -> Bound k
--- bound (Seek (Found k _) _) = Atleast k
--- bound (Seek (Bound p)   _) = p
-
 intersect :: Ord k => Seek k a -> Seek k b -> Seek k (a,b)
 intersect Empty _ = Empty
 intersect _ Empty = Empty
 intersect (Yield k x s) (Yield k' y t)
-  | k == k' = Yield k ((,) <$> x <*> y) seek'
+  | k == k'   = Yield k ((,) <$> x <*> y) seek'
   | otherwise = Yield (max k k') Nothing seek'
-  -- NB. no leapfrog optimization!
-  where seek' k = intersect (s k) (t k)
+  where seek' p = intersect s' t' where
+          s' = s p
+          -- t' = t p --no leapfrog; slower.
+          t' = t (let Yield k _ _ = s' in Atleast k) --leapfrog optimization
 
 fromSortedArray :: Ord k => [(k,v)] -> Seek k v
 fromSortedArray l = go 0 where

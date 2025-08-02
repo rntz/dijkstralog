@@ -24,47 +24,41 @@ search p l r | r - l <= 1 = r
 
 
 ---------- SEEKABLE ITERATORS ----------
-data Position k v = Found k v | Bound (Bound k) deriving Show
-data Bound k = Atleast k | Greater k | Done deriving (Eq, Show)
+data Bound k = Atleast k | Greater k deriving (Eq, Show)
 
 instance Ord k => Ord (Bound k) where
   compare x y = embed x `compare` embed y
-    where embed (Atleast k) = (1, Just (k, 0))
-          embed (Greater k) = (1, Just (k, 1))
-          embed Done        = (2, Nothing)
+    where embed (Atleast k) = (k, 0)
+          embed (Greater k) = (k, 1)
 
 satisfies :: Ord k => Bound k -> k -> Bool
 satisfies bound k = bound <= Atleast k
 
-data Seek k v = Seek
-  { posn :: Position k v          -- a key-value pair, or a bound
-  , seek :: Bound k -> Seek k v } -- seeks forward toward a bound
+data Seek k v
+  = Empty
+  | Yield k (Maybe v) (Bound k -> Seek k v)
 
 toSorted :: Seek k v -> [(k,v)]
-toSorted (Seek (Bound Done) _)   = []
-toSorted (Seek (Bound p)   seek) = toSorted (seek p)
-toSorted (Seek (Found k v) seek) = (k,v) : toSorted (seek (Greater k))
-
-bound :: Seek k v -> Bound k
-bound (Seek (Found k _) _) = Atleast k
-bound (Seek (Bound p)   _) = p
+toSorted Empty = []
+toSorted (Yield k (Just v) seek) = (k,v) : toSorted (seek (Greater k))
+toSorted (Yield k Nothing seek) = toSorted $ seek (Atleast k)
 
 intersect :: Ord k => Seek k a -> Seek k b -> Seek k (a,b)
-intersect s t = Seek posn' seek' where
-  posn' | Found k x <- posn s, Found k' y <- posn t, k == k' = Found k (x, y)
-        | otherwise = Bound (bound s `max` bound t)
-  seek' k = intersect s' t' where
-    s' = seek s k
-    t' = seek t (bound s') -- leapfrog optimization; could be (seek2 k) instead
-
-empty :: Seek k v
-empty = Seek (Bound Done) (const empty)
+intersect Empty _ = Empty
+intersect _ Empty = Empty
+intersect (Yield k x s) (Yield k' y t)
+  | k == k'   = Yield k ((,) <$> x <*> y) seek'
+  | otherwise = Yield (max k k') Nothing seek'
+  where seek' p = intersect s' t' where
+          s' = s p
+          -- t' = t p --no leapfrog; slower.
+          t' = t (let Yield k _ _ = s' in Atleast k) --leapfrog optimization
 
 fromSortedArray :: Ord k => [(k,v)] -> Seek k v
 fromSortedArray l = go 0 where
   hi = length l
   arr = listArray (0, hi) l
-  go lo = if lo < hi then Seek (Found k v) seek else empty where
+  go lo = if lo < hi then Yield k (Just v) seek else Empty where
     (k, v) = arr ! lo
     seek tgt = go $ gallop (satisfies tgt . fst . (arr !)) lo hi
 
