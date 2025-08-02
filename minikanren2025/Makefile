@@ -33,6 +33,7 @@ watch\:%:
 clean:
 	$(LATEXRUN) --clean-all
 	rm -r latex.out
+	rm *.o *.hi
 
 # debugging: `make print-FOO` will print the value of $(FOO)
 .PHONY: print-%
@@ -41,7 +42,7 @@ print-%:
 
 # GHC
 %: %.hs
-	ghc -O2 $<
+	ghc -Wincomplete-patterns -O2 $<
 
 .PHONY: run\:%
 run\:%: %
