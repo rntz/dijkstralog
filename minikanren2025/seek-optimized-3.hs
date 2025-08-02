@@ -24,7 +24,7 @@ search p l r | r - l <= 1 = r
 
 
 ---------- SEEKABLE ITERATORS ----------
-data Bound k = Atleast k | Greater k deriving (Eq, Show)
+data Bound k = Atleast !k | Greater !k deriving (Eq, Show)
 
 instance Ord k => Ord (Bound k) where
   compare x y = embed x `compare` embed y
@@ -36,7 +36,7 @@ satisfies bound k = bound <= Atleast k
 
 data Seek k v
   = Empty
-  | Yield k (Maybe v) (Bound k -> Seek k v)
+  | Yield !k !(Maybe v) !(Bound k -> Seek k v)
 
 toSorted :: Seek k v -> [(k,v)]
 toSorted Empty = []

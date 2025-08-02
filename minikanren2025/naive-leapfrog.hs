@@ -4,7 +4,7 @@ import System.CPUTime
 import System.IO (hFlush, stdout)
 
 data Iter k v = Empty
-              | Yield k v (k -> Iter k v)
+              | Yield !k !v !(k -> Iter k v)
 
 toSorted :: Iter k v -> [(k, v)]
 toSorted Empty = []
@@ -30,7 +30,7 @@ xys = xs `intersect` ys
 
 
 
-printTime label result = do
+printTime label ~result = do
   putStr (label ++ ": "); hFlush stdout
   start_ps <- getCPUTime --in picoseconds
   end_ps <- result `seq` getCPUTime
@@ -42,11 +42,11 @@ odds  = fromSortedArray [(x, "odd")  | x <- [1, 3 .. n]]
 ends  = fromSortedArray [(x, "end")  | x <- [0,      n]]
 
 {-# NOINLINE time2 #-}
-time2 label xs ys = printTime label $ length $ toSorted $ xs `intersect` ys
+time2 label ~xs ~ys = printTime label $ length $ toSorted $ xs `intersect` ys
 {-# NOINLINE time3L #-}
-time3L label xs ys zs = printTime label $ length $ toSorted $ (xs `intersect` ys) `intersect` zs
+time3L label ~xs ~ys ~zs = printTime label $ length $ toSorted $ (xs `intersect` ys) `intersect` zs
 {-# NOINLINE time3R #-}
-time3R label xs ys zs = printTime label $ length $ toSorted $ xs `intersect` (ys `intersect` zs)
+time3R label ~xs ~ys ~zs = printTime label $ length $ toSorted $ xs `intersect` (ys `intersect` zs)
 
 thrice x = do x; x; x
 main = do thrice $ time2 "odds ∩ ends" odds ends
@@ -59,7 +59,7 @@ fromSortedArray l = go 0 where
   arr = listArray (0, hi) l
   hi = length l
   go lo = if lo >= hi then Empty else Yield k v seek where
-    (k, v) = arr ! lo
+    ~(k, v) = arr ! lo
     seek tgt = go $ gallop ((tgt <=) . fst . (arr !)) (lo + 1) hi
 
 -- galloping search: exponential probing followed by binary search. O(log i)
