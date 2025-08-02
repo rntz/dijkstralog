@@ -38,3 +38,11 @@ clean:
 .PHONY: print-%
 print-%:
 	@echo $*=$($*)
+
+# GHC
+%: %.hs
+	ghc -O2 $<
+
+.PHONY: run\:%
+run\:%: %
+	./$<
