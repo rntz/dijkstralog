@@ -56,7 +56,7 @@ intersect s t = Seek posn' seek' where
     s' = seek s k
     t' = seek t (bound s') -- leapfrog optimization; could be (seek2 k) instead
 
-n = 30_000_000
+n = 50_000_000
 evens = fromSortedArray [(x, "even") | x <- [0, 2 .. n]]
 odds  = fromSortedArray [(x, "odd")  | x <- [1, 3 .. n]]
 ends  = fromSortedArray [(x, "end")  | x <- [0,      n]]

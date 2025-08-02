@@ -36,7 +36,7 @@ printTime label ~result = do
   end_ps <- result `seq` getCPUTime
   printf "%0.6fs\n" (fromIntegral (end_ps - start_ps) / (10^12))
 
-n = 30_000_000
+n = 50_000_000
 evens = fromSortedArray [(x, "even") | x <- [0, 2 .. n]]
 odds  = fromSortedArray [(x, "odd")  | x <- [1, 3 .. n]]
 ends  = fromSortedArray [(x, "end")  | x <- [0,      n]]
