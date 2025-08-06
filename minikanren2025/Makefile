@@ -44,6 +44,9 @@ print-%:
 %: %.hs
 	ghc -Wincomplete-patterns -O2 $<
 
+%: %.rs
+	rustc -O $<
+
 .PHONY: run\:%
 run\:%: %
 	./$<
