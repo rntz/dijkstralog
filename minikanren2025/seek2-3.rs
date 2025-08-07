@@ -106,14 +106,13 @@ impl<S: Seek> Iterator for Keys<S> {
 
 
 // ---------- INNER JOIN ----------
-#[derive(Clone)]
-struct Join<X,Y>(X, Y);
+struct Join<X, Y>(X, Y);
 
 macro_rules! unsafe_assert {
     ($expr:expr) => {
         debug_assert!($expr);
-        // This seems to have no affect on performance.
-        if !($expr) { unsafe { core::hint::unreachable_unchecked() } }
+        // // This seems to have no affect on performance.
+        // if !($expr) { unsafe { core::hint::unreachable_unchecked() } }
     }
 }
 
@@ -123,14 +122,14 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
 
     fn seek<F: FnMut(Self::Key) -> bool>(&mut self, test: F) -> Position<Self::Key, Self::Value> {
         match self.0.seek(test) {
-            Know(p) => match self.1.seek(|x| p.matches(x)) {
-                Know(q) => { unsafe_assert!(q >= p); Know(q) }
-                Have(k, _) => {unsafe_assert!(Atleast(k) >= p); Know(Atleast(k)) }
+            Know(b0) => match self.1.seek(|x| b0.matches(x)) {
+                Know(b1) => { unsafe_assert!(b1 >= b0); Know(b1) }
+                Have(k1, _) => { unsafe_assert!(Atleast(k1) >= b0); Know(Atleast(k1)) }
             }
-            Have(k, x) => match self.1.seek(|x| x >= k) {
-                Know(q) => { unsafe_assert!(q >= Atleast(k)); Know(q) }
-                Have(k2, y) if k == k2 => Have(k, (x, y)),
-                Have(k2, _) => { unsafe_assert!(k2 >= k); Know(Atleast(k2)) }
+            Have(k0, v0) => match self.1.seek(|x| x >= k0) {
+                Know(b1) => { unsafe_assert!(b1 >= Atleast(k0)); Know(b1) }
+                Have(k1, v1) if k0 == k1 => Have(k1, (v0, v1)),
+                Have(k1, _) => { unsafe_assert!(k1 >= k0); Know(Atleast(k1)) }
             }
         }
     }
@@ -138,7 +137,6 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
 
 
 // ---------- SORTED LISTS ----------
-#[derive(Clone)]
 struct Elements<'a, X> {
     elems: &'a [X],
     index: usize,

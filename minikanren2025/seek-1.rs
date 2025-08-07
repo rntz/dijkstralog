@@ -94,6 +94,7 @@ trait Seek {
 }
 
 struct Keys<S: Seek>(S);
+
 impl<S: Seek> Iterator for Keys<S> {
     type Item = S::Key;
     fn next(&mut self) -> Option<Self::Item> {
@@ -112,8 +113,7 @@ impl<S: Seek> Iterator for Keys<S> {
 
 
 // ---------- INNER JOIN ----------
-#[derive(Clone)]
-struct Join<X,Y>(X, Y);
+struct Join<X, Y>(X, Y);
 
 impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
     type Key   = X::Key;
@@ -131,7 +131,6 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
 
 
 // ---------- SORTED LISTS ----------
-#[derive(Clone)]
 struct Elements<'a, X> {
     elems: &'a [X],
     index: usize,

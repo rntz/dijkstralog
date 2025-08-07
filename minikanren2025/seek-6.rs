@@ -1,5 +1,3 @@
-#![allow(dead_code, unused_imports)]
-use std::cmp::Ordering;
 use std::time::{Instant, Duration};
 
 // Based on DataFrog's gallop(),
