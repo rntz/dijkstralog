@@ -96,7 +96,7 @@ impl<S: Seek> Iterator for Keys<S> {
         };
         loop {
             match self.iter.seek(|x| bound.matches(x)) {
-                done@Know(Done) => { self.posn = done; return None; }
+                Know(Done) => { self.posn = Know(Done); return None; }
                 Have(k, _) => { self.posn = self.iter.seek(|x| x > k); return Some(k); }
                 Know(p) => { bound = p; }
             }
@@ -112,6 +112,7 @@ struct Join<X,Y>(X, Y);
 macro_rules! unsafe_assert {
     ($expr:expr) => {
         debug_assert!($expr);
+        // This seems to have no affect on performance.
         if !($expr) { unsafe { core::hint::unreachable_unchecked() } }
     }
 }
