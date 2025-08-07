@@ -129,15 +129,15 @@ fn count_intersection(xs: &[u32], ys: &[u32]) -> usize {
     loop {
         // Leapfrog ys past xs.
         j += gallop(&ys[j..], |y| x <= *y);
-        if j == yn { break }    // use == instead of >= for speed
-        let y = unsafe { *ys.get_unchecked(j) };
+        if j >= yn { break }
+        let y = ys[j];
         if x == y { count += 1; }
         i += 1;
 
         // Leapfrog xs past ys.
         i += gallop(&xs[i..], |x| y <= *x);
-        if i == xn { break }             // use != instead of < for speed
-        x = unsafe { *xs.get_unchecked(i) };
+        if i >= xn { break }
+        x = xs[i];
         if x == y { count += 1; }
         j += 1;
     }
