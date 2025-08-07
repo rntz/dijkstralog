@@ -1,4 +1,8 @@
-// ---------- SEEKABLE ITERATORS ----------
+// ---------- SEEKABLE ITERATORS AND THEIR POSITIONS ----------
+// Positions of an iterator:
+// Yield(k, Some(v)) = we found a key-value pair (k, v)
+// Yield(k, None)    = all remaining keys are >= k
+// Empty             = there are no more key-value pairs
 enum Position<S: Seek + ?Sized> {
     Yield(S::Key, Option<S::Value>),
     Empty,
@@ -9,12 +13,23 @@ trait Seek {
     type Key: Ord + Copy;
     type Value;
 
+    // FUNCTION     self.seek(test)
+    // PRECONDITION test is monotone: (test(x) && x <= y) implies test(y).
+    // EFFECT       seeks self forward toward a key satisfying test()
+    // RETURNS      New position of self:
+    //    Empty             => there are no pairs satisfying test().
+    //    Yield(k, Some(v)) => (k,v) is the least pair such that test(k) is true.
+    //    Yield(k, None)    => test(k) is true, but further calls to seek() may be
+    //                         needed to actually find the next key-value pair.
     fn seek<F: FnMut(&Self::Key) -> bool>(&mut self, test: F) -> Position<Self>;
 
+    // inner join, or intersection on keys, of two seekable iterators.
     fn join<T: Seek>(self, other: T) -> Join<Self, T> where Self: Sized {
         Join(self, other)
     }
 
+    // produces a Rust iterator over the keys of a seekable iterator. see Keys,
+    // below. (it's easy to adjust this to iterate over the key-value pairs.)
     fn keys(mut self) -> Keys<Self> where Self: Sized {
         let posn = self.seek(|_| true);
         Keys { iter: self, posn }
