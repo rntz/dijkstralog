@@ -196,17 +196,17 @@ fn main() {
         ends.len(),
     );
 
-    ntimes(2, || {
+    ntimes(3, || {
         let (n, elapsed) = timed(|| Keys(Join(elements(evens), elements(ends))).count());
         println!("{:.2}s evens & ends ({n} elts)", elapsed.as_secs_f32());
     });
 
-    ntimes(2, || {
+    ntimes(3, || {
         let (_, elapsed) = timed(|| Keys(Join(elements(evens), elements(odds))).count());
         println!("{:.2}s evens & odds", elapsed.as_secs_f32());
     });
 
-    ntimes(2, || {
+    ntimes(3, || {
         let (n, elapsed) = timed(|| Keys(Join(elements(evens), elements(threes))).count());
         println!("{:.2}s evens & threes ({}M elts)", elapsed.as_secs_f32(), n / 1_000_000);
     });

@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_imports)]
 use std::cmp::Ordering;
 use std::time::{Instant, Duration};
 
@@ -26,6 +25,7 @@ fn gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
 
 // ---------- BOUNDS ----------
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[allow(dead_code)] // allow non-use of Greater
 enum Bound<K> {
     Atleast(K),
     Greater(K),
@@ -67,7 +67,6 @@ enum Position<K, V> {
 use Position::*;
 
 impl<K: Ord, V> Position<K, V> {
-    // TODO: try to optimize this?
     fn inner_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, (V,U)> {
         match (self, other) {
             (Have(k, x), Have(k2, y)) if k == k2 => Have(k, (x, y)),
@@ -173,8 +172,6 @@ impl<'a, X: Ord + Copy> Seek for Elements<'a, X> {
             &self.elems[self.index..],
             |x| !test(*x)       // NOTE THE NEGATION!
         );
-        // TODO: if gallop() returned more info could we avoid this call and speed this
-        // up?
         self.posn()
     }
 }
@@ -201,18 +198,23 @@ fn main() {
 
     let evens: Vec<u32> = (0..=N).filter(|x| x % 2 == 0).collect();
     let odds:  Vec<u32> = (0..=N).filter(|x| x % 2 == 1).collect();
+    let threes: Vec<u32> = (0..=N).filter(|x| x % 3 == 0).collect();
     let ends:  Vec<u32> = vec![0, N];
 
     let evens = &evens[..];
     let odds  = &odds[..];
+    let threes = &threes[..];
     let ends  = &ends[..];
 
     let elapsed = now.elapsed();
-    println!("done! in {:.2}s", elapsed.as_secs_f32());
-
-    println!("{:4}M evens", evens.len() / 1_000_000);
-    println!("{:4}M odds",  odds.len()  / 1_000_000);
-    println!(" {:4} ends",  ends.len());
+    println!("took {:.2}s", elapsed.as_secs_f32());
+    println!(
+        "{}M evens, {}M odds, {}M threes, {} ends",
+        evens.len() / 1_000_000,
+        odds.len()  / 1_000_000,
+        threes.len()  / 1_000_000,
+        ends.len(),
+    );
 
     ntimes(3, || {
         let (n, elapsed) = timed(|| Keys::new(Join(elements(evens), elements(ends))).count());
@@ -222,5 +224,10 @@ fn main() {
     ntimes(3, || {
         let (_, elapsed) = timed(|| Keys::new(Join(elements(evens), elements(odds))).count());
         println!("{:.2}s evens & odds", elapsed.as_secs_f32());
+    });
+
+    ntimes(3, || {
+        let (n, elapsed) = timed(|| Keys::new(Join(elements(evens), elements(threes))).count());
+        println!("{:.2}s evens & threes ({}M elts)", elapsed.as_secs_f32(), n / 1_000_000);
     });
 }

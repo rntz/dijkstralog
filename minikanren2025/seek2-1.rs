@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_imports)]
 use std::cmp::Ordering;
 use std::time::{Instant, Duration};
 
@@ -26,6 +25,7 @@ fn gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
 
 // ---------- BOUNDS ----------
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[allow(dead_code)] // allow non-use of Greater
 enum Bound<K> {
     Atleast(K),
     Greater(K),
@@ -120,16 +120,25 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
         self.0.posn().inner_join(self.1.posn())
     }
 
+    // TODO: can we simplify this without losing performance?
+    //
+    // NB. the assert!s here actually speed up (evens & threes), because they provide
+    // enough information to drop the max() call in Position::inner_join(). We don't get
+    // any speedup in release mode from replacing assert! with assert_unchecked!, so I
+    // just leave them as assert!s.
+    //
+    // assert_unchecked:
+    // https://docs.rs/assert-unchecked/latest/assert_unchecked/macro.assert_unchecked.html
     fn seek<F: FnMut(Self::Key) -> bool>(&mut self, test: F) -> Position<Self::Key, Self::Value> {
         match self.0.seek(test) {
             Know(p) => match self.1.seek(|x| p.matches(x)) {
-                Know(q) => { assert!(q >= p); Know(q) }
-                Have(k, _) => {assert!(Atleast(k) >= p); Know(Atleast(k)) }
+                Know(q) => { assert!(q >= p);  Know(q) }
+                Have(k, _) => { assert!(Atleast(k) >= p);  Know(Atleast(k)) }
             }
             Have(k, x) => match self.1.seek(|x| x >= k) {
-                Know(q) => { assert!(q >= Atleast(k)); Know(q) }
+                Know(q) => { assert!(q >= Atleast(k));  Know(q) }
                 Have(k2, y) if k == k2 => Have(k, (x, y)),
-                Have(k2, _) => { assert!(k2 >= k); Know(Atleast(k2)) }
+                Have(k2, _) => { assert!(k2 >= k);  Know(Atleast(k2)) }
             }
         }
     }
@@ -187,18 +196,23 @@ fn main() {
 
     let evens: Vec<u32> = (0..=N).filter(|x| x % 2 == 0).collect();
     let odds:  Vec<u32> = (0..=N).filter(|x| x % 2 == 1).collect();
+    let threes: Vec<u32> = (0..=N).filter(|x| x % 3 == 0).collect();
     let ends:  Vec<u32> = vec![0, N];
 
     let evens = &evens[..];
     let odds  = &odds[..];
+    let threes = &threes[..];
     let ends  = &ends[..];
 
     let elapsed = now.elapsed();
-    println!("done! in {:.2}s", elapsed.as_secs_f32());
-
-    println!("{:4}M evens", evens.len() / 1_000_000);
-    println!("{:4}M odds",  odds.len()  / 1_000_000);
-    println!(" {:4} ends",  ends.len());
+    println!("took {:.2}s", elapsed.as_secs_f32());
+    println!(
+        "{}M evens, {}M odds, {}M threes, {} ends",
+        evens.len() / 1_000_000,
+        odds.len()  / 1_000_000,
+        threes.len()  / 1_000_000,
+        ends.len(),
+    );
 
     ntimes(3, || {
         let (n, elapsed) = timed(|| Keys(Join(elements(evens), elements(ends))).count());
@@ -208,5 +222,10 @@ fn main() {
     ntimes(3, || {
         let (_, elapsed) = timed(|| Keys(Join(elements(evens), elements(odds))).count());
         println!("{:.2}s evens & odds", elapsed.as_secs_f32());
+    });
+
+    ntimes(3, || {
+        let (n, elapsed) = timed(|| Keys(Join(elements(evens), elements(threes))).count());
+        println!("{:.2}s evens & threes ({}M elts)", elapsed.as_secs_f32(), n / 1_000_000);
     });
 }
