@@ -67,8 +67,9 @@ enum Position<K, V> {
 use Position::*;
 
 impl<K: Ord, V> Position<K, V> {
-    // TODO: try to optimize this?
     fn inner_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, (V,U)> {
+        // I think the asserts in Join.seek() speed this code up by letting the compiler
+        // optimize `p.to_bound().max(q.to_bound())` to just `q.to_bound()`.
         match (self, other) {
             (Have(k, x), Have(k2, y)) if k == k2 => Have(k, (x, y)),
             (p, q) => Know(p.to_bound().max(q.to_bound())),
