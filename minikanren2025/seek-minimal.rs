@@ -115,8 +115,7 @@ fn ntimes<F: Fn()>(n: usize, f: F) {
     for _ in 0..n { f() }
 }
 
-// Hand-optimized intersection. We're about 1.35x the speed of this when
-// intersecting evens & threes, below.
+// Hand-optimized intersection. We're about twice as slow as this :(.
 fn count_intersection(xs: &[u32], ys: &[u32]) -> usize {
     let xn = xs.len();
     let yn = ys.len();
@@ -125,53 +124,36 @@ fn count_intersection(xs: &[u32], ys: &[u32]) -> usize {
     let mut i = 0;
     let mut j = 0;
 
-    while i != xn {             // use != instead of < for speed
-        if i >= xn { unsafe { core::hint::unreachable_unchecked() } } // bounds check hint
-        // leapfrog ys forward past xs
-        let x = xs[i];
+    // Symmetric approach.
+    if xn == 0 { return 0 }
+    let mut x = xs[0];
+    loop {
         j += gallop(&ys[j..], |y| x <= *y);
         if j == yn { break }    // use == instead of >= for speed
-        if j >= yn { unsafe { core::hint::unreachable_unchecked() } } // bounds check hint
-        let y = ys[j];
+        let y = unsafe { *ys.get_unchecked(j) };
+        if x == y { count += 1; }
         i += 1;
-        if x == y {
-            count += 1;
-        } else {
-            i += gallop(&xs[i..], |x| y <= *x);
-        }
+
+        i += gallop(&xs[i..], |x| y <= *x);
+        if i == xn { break }             // use != instead of < for speed
+        x = unsafe { *xs.get_unchecked(i) };
+        if x == y { count += 1; }
+        j += 1;
     }
 
-    // if xn == 0 || yn == 0 { return 0 }
-    // let mut x; let mut y = ys[0];
-    // loop {
-    //     // leapfrog xs forward past ys
-    //     i += gallop(&xs[i..], |x| y <= *x);
-    //     if i == xn { break }  // use == instead of <= for speed
-    //     if i >= xn { unsafe { core::hint::unreachable_unchecked() } } // bounds check hint
-
-    //     x = xs[i];
-    //     if x == y {
-    //         count += 1;
-    //         i += 1;
-    //         if i == xn { break }
-    //         if i >= xn { unsafe { core::hint::unreachable_unchecked() } }
-    //         x = xs[i];
-    //     }
-
-    //     // leapfrog ys forward past xs
+    // // ---------- OLD VERSION ----------
+    // while i != xn {             // use != instead of < for speed
+    //     let x = unsafe { *xs.get_unchecked(i) };
     //     j += gallop(&ys[j..], |y| x <= *y);
-
     //     if j == yn { break }    // use == instead of >= for speed
-    //     if j >= yn { unsafe { core::hint::unreachable_unchecked() } } // bounds check hint
-
-    //     y = ys[j];
+    //     let y = unsafe { *ys.get_unchecked(j) };
+    //     i += 1;
     //     if x == y {
     //         count += 1;
-    //         j += 1;
-    //         if j == yn { break }
-    //         if j >= yn { unsafe { core::hint::unreachable_unchecked() } } // bounds check hint
-    //         y = ys[j];
     //     }
+    //     // I used to put this in an else-branch (of "if x == y"), but doing it
+    //     // unconditionally has _slightly_ better performance. Why, though?!
+    //     i += gallop(&xs[i..], |x| y <= *x);
     // }
 
     return count;
