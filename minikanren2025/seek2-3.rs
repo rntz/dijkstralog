@@ -178,10 +178,10 @@ fn main() {
     print!("Constructing vectors... ");
     stdout().flush().expect("io error");
 
-    let evens: Vec<u32> = (0..=N).filter(|x| x % 2 == 0).collect();
-    let odds:  Vec<u32> = (0..=N).filter(|x| x % 2 == 1).collect();
-    let threes: Vec<u32> = (0..=N).filter(|x| x % 3 == 0).collect();
-    let ends:  Vec<u32> = vec![0, N];
+    let evens: Vec<u32>  = (0..).map(|x| x * 2)    .take_while(|x| *x <= N).collect();
+    let odds:  Vec<u32>  = (0..).map(|x| 1 + x * 2).take_while(|x| *x <= N).collect();
+    let threes: Vec<u32> = (0..).map(|x| x * 3)    .take_while(|x| *x <= N).collect();
+    let ends:  Vec<u32>  = vec![0, N];
 
     let evens = &evens[..];
     let odds  = &odds[..];
