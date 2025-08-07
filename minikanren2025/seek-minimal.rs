@@ -118,22 +118,23 @@ fn ntimes<F: Fn()>(n: usize, f: F) {
 // Hand-optimized intersection. We're about twice as slow as this :(.
 fn count_intersection(xs: &[u32], ys: &[u32]) -> usize {
     let xn = xs.len();
+    if xn == 0 { return 0 }
     let yn = ys.len();
 
     let mut count = 0;
     let mut i = 0;
     let mut j = 0;
-
-    // Symmetric approach.
-    if xn == 0 { return 0 }
     let mut x = xs[0];
+
     loop {
+        // Leapfrog ys past xs.
         j += gallop(&ys[j..], |y| x <= *y);
         if j == yn { break }    // use == instead of >= for speed
         let y = unsafe { *ys.get_unchecked(j) };
         if x == y { count += 1; }
         i += 1;
 
+        // Leapfrog xs past ys.
         i += gallop(&xs[i..], |x| y <= *x);
         if i == xn { break }             // use != instead of < for speed
         x = unsafe { *xs.get_unchecked(i) };
