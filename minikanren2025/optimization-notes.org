@@ -1,0 +1,33 @@
+* what seemed to help?
+
+# MAKING ALL CONSTRUCTORS STRICT
+just general good advice in Haskell.
+all our laziness goes through functions anyway.
+
+# GETTING RID OF Done IN Bound
+This leaves us with just:
+
+  data Bound k = Atleast !k | Greater !k
+
+This seems to be most important for the use of Bound as parameter to the seek function.
+WHY is this important?
+
+# SPLITTING SEEK INTO EMPTY | YIELD
+
+> data Seek = Seek { posn, seek }  -- out!
+> data Seek = Empty | Yield !k !(Maybe k) !(Bound k -> Seek k v) -- in!
+
+this is the easiest way to get rid of Done in Bound.
+but it also seems faster than the alternative.
+in particular it means we never yield a Bound from an iterator.
+This restrict expressiveness: can't implement filters, b/c can't yield (Greater k).
+
+* what haven't I tried
+
+- CPS
+- making `seek` only yield the remainder of the list
+- optimizing `compare`, `max`, and `satisfies` on Bounds.
+
+* TODO a thing I can do everywhere
+
+in seek(), if I do leapfrog in inner join, I _know_ that the second key will be larger, so I don't need to do a three-way comparison!

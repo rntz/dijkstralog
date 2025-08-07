@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_imports)]
 use std::cmp::Ordering;
 use std::time::{Instant, Duration};
 
@@ -66,6 +67,7 @@ enum Position<K, V> {
 use Position::*;
 
 impl<K: Ord, V> Position<K, V> {
+    // TODO: try to optimize this?
     fn inner_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, (V,U)> {
         match (self, other) {
             (Have(k, x), Have(k2, y)) if k == k2 => Have(k, (x, y)),
@@ -89,24 +91,19 @@ trait Seek {
     type Key: Ord + Copy;
     type Value;
     fn posn(&self) -> Position<Self::Key, Self::Value>;
-    fn seek(&mut self, target: Bound<Self::Key>);
-    fn bound(&self) -> Bound<Self::Key> { self.posn().to_bound() }
+    fn seek<F: FnMut(Self::Key) -> bool>(&mut self, test: F) -> Position<Self::Key, Self::Value>;
 }
 
 struct Keys<S: Seek>(S);
 impl<S: Seek> Iterator for Keys<S> {
     type Item = S::Key;
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.0.posn() {
-                Have(k, _) => {
-                    self.0.seek(Greater(k));
-                    return Some(k);
-                }
-                Know(Done) => return None,
-                Know(p) => self.0.seek(p),
-            }
-        }
+        let mut posn = self.0.posn();
+        loop { match posn {
+            Know(Done) => return None,
+            Know(p) => { posn = self.0.seek(|x| p.matches(x)); }
+            Have(k, _) => { self.0.seek(|x| x > k); return Some(k); }
+        } }
     }
 }
 
@@ -123,9 +120,18 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
         self.0.posn().inner_join(self.1.posn())
     }
 
-    fn seek(&mut self, target: Bound<X::Key>) {
-        self.0.seek(target);
-        self.1.seek(self.0.bound());
+    fn seek<F: FnMut(Self::Key) -> bool>(&mut self, test: F) -> Position<Self::Key, Self::Value> {
+        match self.0.seek(test) {
+            Know(p) => match self.1.seek(|x| p.matches(x)) {
+                Know(q) => { assert!(q >= p); Know(q) }
+                Have(k, _) => {assert!(Atleast(k) >= p); Know(Atleast(k)) }
+            }
+            Have(k, x) => match self.1.seek(|x| x >= k) {
+                Know(q) => { assert!(q >= Atleast(k)); Know(q) }
+                Have(k2, y) if k == k2 => Have(k, (x, y)),
+                Have(k2, _) => { assert!(k2 >= k); Know(Atleast(k2)) }
+            }
+        }
     }
 }
 
@@ -148,11 +154,14 @@ impl<'a, X: Ord + Copy> Seek for Elements<'a, X> {
         else { Have(self.elems[self.index], ()) }
     }
 
-    fn seek(&mut self, target: Bound<X>) {
+    fn seek<F: FnMut(Self::Key) -> bool>(&mut self, mut test: F) -> Position<X, ()> {
         self.index += gallop(
             &self.elems[self.index..],
-            |x| !target.matches(*x)
-        )
+            |x| !test(*x)       // NOTE THE NEGATION!
+        );
+        // TODO: if gallop() returned more info could we avoid this call and speed this
+        // up?
+        self.posn()
     }
 }
 
@@ -178,36 +187,26 @@ fn main() {
 
     let evens: Vec<u32> = (0..=N).filter(|x| x % 2 == 0).collect();
     let odds:  Vec<u32> = (0..=N).filter(|x| x % 2 == 1).collect();
-    let threes: Vec<u32> = (0..=N).filter(|x| x % 3 == 0).collect();
     let ends:  Vec<u32> = vec![0, N];
 
     let evens = &evens[..];
     let odds  = &odds[..];
-    let threes = &threes[..];
     let ends  = &ends[..];
 
     let elapsed = now.elapsed();
-    println!("took {:.2}s", elapsed.as_secs_f32());
-    println!(
-        "{}M evens, {}M odds, {}M threes, {} ends",
-        evens.len() / 1_000_000,
-        odds.len()  / 1_000_000,
-        threes.len()  / 1_000_000,
-        ends.len(),
-    );
+    println!("done! in {:.2}s", elapsed.as_secs_f32());
 
-    ntimes(2, || {
+    println!("{:4}M evens", evens.len() / 1_000_000);
+    println!("{:4}M odds",  odds.len()  / 1_000_000);
+    println!(" {:4} ends",  ends.len());
+
+    ntimes(3, || {
         let (n, elapsed) = timed(|| Keys(Join(elements(evens), elements(ends))).count());
         println!("{:.2}s evens & ends ({n} elts)", elapsed.as_secs_f32());
     });
 
-    ntimes(2, || {
+    ntimes(3, || {
         let (_, elapsed) = timed(|| Keys(Join(elements(evens), elements(odds))).count());
         println!("{:.2}s evens & odds", elapsed.as_secs_f32());
-    });
-
-    ntimes(2, || {
-        let (n, elapsed) = timed(|| Keys(Join(elements(evens), elements(threes))).count());
-        println!("{:.2}s evens & threes ({}M elts)", elapsed.as_secs_f32(), n / 1_000_000);
     });
 }

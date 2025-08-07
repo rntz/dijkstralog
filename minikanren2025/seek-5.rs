@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_imports)]
 use std::cmp::Ordering;
 use std::time::{Instant, Duration};
 
@@ -23,62 +24,22 @@ fn gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
 }
 
 
-// ---------- BOUNDS ----------
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-enum Bound<K> {
-    Atleast(K),
-    Greater(K),
-    Done,
-}
-use Bound::*;
-
-impl<K: Ord> PartialOrd for Bound<K> {
-    fn partial_cmp(&self, other: &Bound<K>) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<K: Ord> Ord for Bound<K> {
-    fn cmp(&self, other: &Bound<K>) -> Ordering {
-        match (self, other) {
-            (Done, Done) => Ordering::Equal,
-            (_   , Done) => Ordering::Less,
-            (Done,    _) => Ordering::Greater,
-            (Atleast(x)  ,  Atleast(y)) |
-            (Greater(x)  ,  Greater(y)) => x.cmp(y),
-            (Atleast(x)  ,  Greater(y)) => if x <= y { Ordering::Less } else { Ordering::Greater }
-            (Greater(x)  ,  Atleast(y)) => if x <  y { Ordering::Less } else { Ordering::Greater }
-        }
-    }
-}
-
-impl<K: Ord> Bound<K> {
-    fn matches(&self, other: K) -> bool { self <= &Atleast(other) }
-}
-
-
 // ---------- POSITIONS ----------
 #[derive(PartialEq, Eq, Debug)]
 enum Position<K, V> {
-    Have(K, V),
-    Know(Bound<K>),
+    Yield(K, Option<V>),
+    Empty,
 }
 use Position::*;
 
 impl<K: Ord, V> Position<K, V> {
     fn inner_join<U>(self: Position<K,V>, other: Position<K,U>) -> Position<K, (V,U)> {
         match (self, other) {
-            (Have(k, x), Have(k2, y)) if k == k2 => Have(k, (x, y)),
-            (p, q) => Know(p.to_bound().max(q.to_bound())),
-        }
-    }
-}
-
-impl<K: Ord, V> Position<K,V> {
-    fn to_bound(self) -> Bound<K> {
-        match self {
-            Have(k, _) => Atleast(k),
-            Know(p)    => p,
+            (Empty, _) | (_, Empty) => Empty,
+            (Yield(k1, x), Yield(k2, y)) if k1 == k2 => {
+                Yield(k1, x.and_then(|xv| y.and_then(|yv| Some((xv,yv)))))
+            }
+            (Yield(k1, _), Yield(k2, _)) => Yield(k1.max(k2), None),
         }
     }
 }
@@ -89,24 +50,22 @@ trait Seek {
     type Key: Ord + Copy;
     type Value;
     fn posn(&self) -> Position<Self::Key, Self::Value>;
-    fn seek(&mut self, target: Bound<Self::Key>);
-    fn bound(&self) -> Bound<Self::Key> { self.posn().to_bound() }
+    fn seek<F: FnMut(Self::Key) -> bool>(&mut self, test: F) -> Position<Self::Key, Self::Value>;
 }
 
 struct Keys<S: Seek>(S);
 impl<S: Seek> Iterator for Keys<S> {
     type Item = S::Key;
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self.0.posn() {
-                Have(k, _) => {
-                    self.0.seek(Greater(k));
-                    return Some(k);
-                }
-                Know(Done) => return None,
-                Know(p) => self.0.seek(p),
+        let mut p = self.0.posn();
+        while let Yield(k, maybe_v) = p {
+            if let Some(_) = maybe_v {
+                self.0.seek(|x| x > k);
+                return Some(k)
             }
+            p = self.0.seek(|x| x >= k);
         }
+        return None
     }
 }
 
@@ -123,9 +82,14 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
         self.0.posn().inner_join(self.1.posn())
     }
 
-    fn seek(&mut self, target: Bound<X::Key>) {
-        self.0.seek(target);
-        self.1.seek(self.0.bound());
+    fn seek<F: FnMut(Self::Key) -> bool>(&mut self, test: F) -> Position<Self::Key, Self::Value> {
+        let Yield(kx, x) = self.0.seek(test) else { return Empty };
+        let Yield(ky, y) = self.1.seek(|ky| ky >= kx) else { return Empty };
+        if kx == ky {
+            Yield(kx, x.and_then(|vx| y.and_then(|vy| Some((vx,vy)))))
+        } else {
+            Yield(kx.max(ky), None)
+        }
     }
 }
 
@@ -144,15 +108,18 @@ impl<'a, X: Ord + Copy> Seek for Elements<'a, X> {
     type Value = ();
 
     fn posn(&self) -> Position<X, ()> {
-        if self.index >= self.elems.len() { Know(Done) }
-        else { Have(self.elems[self.index], ()) }
+        if self.index >= self.elems.len() { Empty }
+        else { Yield(self.elems[self.index], Some(())) }
     }
 
-    fn seek(&mut self, target: Bound<X>) {
+    fn seek<F: FnMut(Self::Key) -> bool>(&mut self, mut test: F) -> Position<X, ()> {
         self.index += gallop(
             &self.elems[self.index..],
-            |x| !target.matches(*x)
-        )
+            |x| !test(*x)       // NOTE THE NEGATION!
+        );
+        // TODO: if gallop() returned more info could we avoid this call and speed this
+        // up?
+        self.posn()
     }
 }
 

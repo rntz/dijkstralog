@@ -89,7 +89,7 @@ trait Seek {
     type Key: Ord + Copy;
     type Value;
     fn posn(&self) -> Position<Self::Key, Self::Value>;
-    fn seek(&mut self, target: Bound<Self::Key>);
+    fn seek<F: FnMut(Self::Key) -> bool>(&mut self, test: F);
     fn bound(&self) -> Bound<Self::Key> { self.posn().to_bound() }
 }
 
@@ -100,11 +100,11 @@ impl<S: Seek> Iterator for Keys<S> {
         loop {
             match self.0.posn() {
                 Have(k, _) => {
-                    self.0.seek(Greater(k));
+                    self.0.seek(|x| x > k);
                     return Some(k);
                 }
                 Know(Done) => return None,
-                Know(p) => self.0.seek(p),
+                Know(p) => self.0.seek(|x| p.matches(x)),
             }
         }
     }
@@ -123,9 +123,10 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
         self.0.posn().inner_join(self.1.posn())
     }
 
-    fn seek(&mut self, target: Bound<X::Key>) {
-        self.0.seek(target);
-        self.1.seek(self.0.bound());
+    fn seek<F: FnMut(Self::Key) -> bool>(&mut self, test: F) {
+        self.0.seek(test);
+        let bound = self.0.bound();
+        self.1.seek(|y| bound.matches(y));
     }
 }
 
@@ -148,10 +149,10 @@ impl<'a, X: Ord + Copy> Seek for Elements<'a, X> {
         else { Have(self.elems[self.index], ()) }
     }
 
-    fn seek(&mut self, target: Bound<X>) {
+    fn seek<F: FnMut(Self::Key) -> bool>(&mut self, mut test: F) {
         self.index += gallop(
             &self.elems[self.index..],
-            |x| !target.matches(*x)
+            |x| !test(*x)       // NOTE THE NEGATION!
         )
     }
 }
