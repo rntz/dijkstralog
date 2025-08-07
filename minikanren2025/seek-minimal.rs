@@ -141,21 +141,6 @@ fn count_intersection(xs: &[u32], ys: &[u32]) -> usize {
         j += 1;
     }
 
-    // // ---------- OLD VERSION ----------
-    // while i != xn {             // use != instead of < for speed
-    //     let x = unsafe { *xs.get_unchecked(i) };
-    //     j += gallop(&ys[j..], |y| x <= *y);
-    //     if j == yn { break }    // use == instead of >= for speed
-    //     let y = unsafe { *ys.get_unchecked(j) };
-    //     i += 1;
-    //     if x == y {
-    //         count += 1;
-    //     }
-    //     // I used to put this in an else-branch (of "if x == y"), but doing it
-    //     // unconditionally has _slightly_ better performance. Why, though?!
-    //     i += gallop(&xs[i..], |x| y <= *x);
-    // }
-
     return count;
 }
 
