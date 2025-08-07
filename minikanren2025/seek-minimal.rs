@@ -115,25 +115,65 @@ fn ntimes<F: Fn()>(n: usize, f: F) {
     for _ in 0..n { f() }
 }
 
-// Hand-written intersection.
+// Hand-optimized intersection. We're about 1.35x the speed of this when
+// intersecting evens & threes, below.
 fn count_intersection(xs: &[u32], ys: &[u32]) -> usize {
     let xn = xs.len();
     let yn = ys.len();
+
     let mut count = 0;
     let mut i = 0;
     let mut j = 0;
-    while i < xn {
+
+    while i != xn {             // use != instead of < for speed
+        if i >= xn { unsafe { core::hint::unreachable_unchecked() } } // bounds check hint
+        // leapfrog ys forward past xs
         let x = xs[i];
         j += gallop(&ys[j..], |y| x <= *y);
-        if j == yn { break }
+        if j == yn { break }    // use == instead of >= for speed
+        if j >= yn { unsafe { core::hint::unreachable_unchecked() } } // bounds check hint
         let y = ys[j];
+        i += 1;
         if x == y {
             count += 1;
-            j += 1;
+        } else {
+            i += gallop(&xs[i..], |x| y <= *x);
         }
-        i += 1;
-        i += gallop(&xs[i..], |x| y <= *x);
     }
+
+    // if xn == 0 || yn == 0 { return 0 }
+    // let mut x; let mut y = ys[0];
+    // loop {
+    //     // leapfrog xs forward past ys
+    //     i += gallop(&xs[i..], |x| y <= *x);
+    //     if i == xn { break }  // use == instead of <= for speed
+    //     if i >= xn { unsafe { core::hint::unreachable_unchecked() } } // bounds check hint
+
+    //     x = xs[i];
+    //     if x == y {
+    //         count += 1;
+    //         i += 1;
+    //         if i == xn { break }
+    //         if i >= xn { unsafe { core::hint::unreachable_unchecked() } }
+    //         x = xs[i];
+    //     }
+
+    //     // leapfrog ys forward past xs
+    //     j += gallop(&ys[j..], |y| x <= *y);
+
+    //     if j == yn { break }    // use == instead of >= for speed
+    //     if j >= yn { unsafe { core::hint::unreachable_unchecked() } } // bounds check hint
+
+    //     y = ys[j];
+    //     if x == y {
+    //         count += 1;
+    //         j += 1;
+    //         if j == yn { break }
+    //         if j >= yn { unsafe { core::hint::unreachable_unchecked() } } // bounds check hint
+    //         y = ys[j];
+    //     }
+    // }
+
     return count;
 }
 
