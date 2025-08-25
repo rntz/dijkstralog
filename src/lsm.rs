@@ -14,8 +14,8 @@ impl Add for () {
 // The maximum # of levels we can have in a LSM. We need this because Seek outer joins /
 // unions are implemented using fixed-size arrays to avoid heap allocation. We need unions
 // to iterate over an LSM because an LSM is the union of its layers. LSM levels grow as
-// powers of 2, so 48 levels should be enough for 2^48 - 1 tuples at worst, one less than
-// the addressable memory space on x86-64 and arm64 machines.
+// powers of 2, so 48 levels should be enough for 2^48 - 1 tuples at worst, i.e. the
+// addressable memory space on x86-64 and arm64 machines.
 pub const MAX_LEVELS: usize = 48;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -28,7 +28,6 @@ impl<K> From<K> for Pair<K, ()> { fn from(key: K) -> Pair<K, ()> { Pair { key, v
 
 // A sorted, de-duplicated list.
 // TODO: rename this "Sorted"?
-#[derive(Clone)]
 pub struct Layer<A> {
     // DataToad uses <Fact as Columnar>::Container here instead of just
     // Vec<Fact>. How important is this?

@@ -258,7 +258,7 @@ pub struct Elements<'a, X> {
     index: usize,
 }
 
-pub fn elements<X: Ord + Copy>(elems: &[X]) -> Elements<X> {
+pub fn elements<X: Ord + Copy>(elems: &'_ [X]) -> Elements<'_, X> {
     return Elements { elems, index: 0 }
 }
 
@@ -290,7 +290,7 @@ pub struct Tuples<'a, X, F> {
     get_key: F,
 }
 
-pub fn tuples<K, X, F>(elems: &[X], get_key: F) -> Tuples<X, F>
+pub fn tuples<K, X, F>(elems: &'_ [X], get_key: F) -> Tuples<'_, X, F>
 where K: Ord + Copy, F: Fn(&X) -> K
 { Tuples { elems, index: 0, get_key } }
 
@@ -336,7 +336,7 @@ impl<X, F> std::fmt::Debug for Ranges<'_, X, F> {
     }
 }
 
-pub fn ranges<X, K, F>(elems: &[X], get_key: F) -> Ranges<X,F>
+pub fn ranges<X, K, F>(elems: &'_ [X], get_key: F) -> Ranges<'_, X, F>
 where K: Ord + Copy, F: Fn(&X) -> K {
     let mut s = Ranges { elems, index_lo: 0, index_hi: 0, get_key };
     // NB. This initial seek_hi() might be wasted work if the first
