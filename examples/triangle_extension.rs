@@ -267,7 +267,8 @@ fn phase2<F: Fn(&mut State, u32, u32, u32)>(
     println!("edges.len()    {:8} {:5}M", state.edges.len(), state.edges.len() / 1_000_000);
     println!("edge_map.len() {:8}", state.edge_map.len());
     println!("edge_rev.len() {:8}", state.edge_rev.len());
-    println!("num paths {:13} {:5}M", state.paths.len(), state.paths.len() / 1_000_000);
+    println!("paths.len() {:11} {:5}M", state.paths.len(), state.paths.len() / 1_000_000);
+    println!("npaths    {:13} {:5}M", state.npaths, state.npaths / 1_000_000);
     if times_secs.len() == 1 {
         println!("time            {:7.2}s", times_secs[0]);
     } else {
