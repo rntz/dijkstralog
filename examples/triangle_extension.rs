@@ -1,5 +1,3 @@
-#![allow(unused_imports, unused_variables)]
-
 // Maintaining 2-edge query
 // against triangle-completion rewrite rule.
 //
@@ -19,13 +17,10 @@
 // Use hash-indices everywhere.
 
 use std::io::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::env::{var, VarError};
 use std::str::FromStr;
-use std::time::{Instant, Duration};
-
-use dijkstralog::iter::{Seek, ranges, tuples};
-use dijkstralog::lsm::{LSM, Layer, Key};
+use std::time::Instant;
 
 // Takes ≤ 3s on my Macbook M1 Pro.
 // Set EDGES environment variable to override; EDGES=all for no limit.
@@ -95,6 +90,15 @@ fn load_edges_from<R: std::io::Read>(source: R, max_edges: Option<usize>) -> Vec
     return edges;
 }
 
+#[derive(Clone,PartialEq,Eq)]
+struct State {
+    max_vertex: u32,
+    edges: Vec<(u32, u32)>,
+    edge_map: HashMap<u32, Vec<u32>>,
+    edge_rev: HashMap<u32, Vec<u32>>,
+    paths: Vec<(u32, u32, u32)>,
+}
+
 fn main() {
     let edges: Vec<(u32, u32)> = load_edges();
     let num_iters = match var("ITERS") {
@@ -143,25 +147,60 @@ fn main() {
     print_flush!("cloning state ");
     let (clone_secs, state2) = timed_secs(|| state.clone());
     println!("took {:.2}s", clone_secs);
-    phase2("KRIS", num_iters, state2, phase2_kris);
+    let mut kris_state = phase2("KRIS", num_iters, state2, phase2_kris);
 
-    // Repeatedly rewrite and update matches (Kris strategy).
-    phase2("KRIS MODIFIED", num_iters, state.clone(), phase2_kris_modified);
-
-    // Repeatedly rewrite and update matches (tuple-at-a-time delta rules).
-    phase2("TINY BATCH DELTA", num_iters, state.clone(), phase2_delta_tiny_batch);
+    let mut kris2_state = phase2("KRIS MODIFIED", num_iters, state.clone(), phase2_kris_modified);
 
     // Repeatedly rewrite and update matches (tuple-at-a-time delta rules).
-    phase2("TUPLE DELTA", num_iters, state, phase2_delta_tuple);
-}
+    let mut batch_state = phase2("TINY BATCH DELTA", num_iters, state.clone(), phase2_tiny_batch_delta);
 
-#[derive(Clone)]
-struct State {
-    max_vertex: u32,
-    edges: Vec<(u32, u32)>,
-    edge_map: HashMap<u32, Vec<u32>>,
-    edge_rev: HashMap<u32, Vec<u32>>,
-    paths: Vec<(u32, u32, u32)>,
+    // Repeatedly rewrite and update matches (tuple-at-a-time delta rules).
+    let mut tuple_state = phase2("TUPLE DELTA", num_iters, state, phase2_tuple_delta);
+
+    if false {            // same results/no duplicates bug checks
+        // Test that all outputs agree and there are no duplicate paths.
+        // This is expensive, but a good check for bugs.
+        println!();
+        println!("Sorting...");
+        kris_state.paths.sort(); println!("kris sorted");
+        kris2_state.paths.sort(); println!("kris2 sorted");
+        tuple_state.paths.sort(); println!("tuple sorted");
+        batch_state.paths.sort(); println!("batch sorted");
+        println!("Checking equality...");
+        assert!(kris_state.paths == kris2_state.paths);
+        assert!(tuple_state.paths == batch_state.paths);
+        assert!(kris_state.paths == tuple_state.paths);
+        println!("All results equal.");
+
+        // Check for duplicates.
+        println!("Checking for duplicates...");
+        let n_pre = kris_state.paths.len();
+        kris_state.paths.dedup();
+        let n_post = kris_state.paths.len();
+        if n_pre != n_post {
+            println!("{} DUPLICATES FOUND!", n_pre - n_post);
+        }
+
+        // // Debug the difference in paths if there is one.
+        // if kris_state.paths != batch_state.paths {
+        //     let mut kris_only = 0;
+        //     let mut delta_only = 0;
+        //     for path in &kris_state.paths {
+        //         if !batch_state.paths.contains(path) {
+        //             kris_only += 1;
+        //             println!(" KRIS ONLY: {path:?}");
+        //         }
+        //     }
+        //     for path in &batch_state.paths {
+        //         if !kris_state.paths.contains(path) {
+        //             delta_only += 1;
+        //             println!("DELTA ONLY: {path:?}");
+        //         }
+        //     }
+        //     println!(" kris only: {kris_only:4}");
+        //     println!("delta only: {delta_only:4}");
+        // }
+    }
 }
 
 fn phase2<F: Fn(&mut State, u32, u32, u32)>(
@@ -169,7 +208,7 @@ fn phase2<F: Fn(&mut State, u32, u32, u32)>(
     num_iters: usize,
     mut state: State,
     rewrite: F,
-) {
+) -> State {
     println!("\n# PHASE 2, {name}: Repeatedly complete triangles and find new 2-edge paths.");
     let phase2 = Instant::now();
 
@@ -198,6 +237,7 @@ fn phase2<F: Fn(&mut State, u32, u32, u32)>(
     println!("edge_map.len() {:8}", state.edge_map.len());
     println!("edge_rev.len() {:8}", state.edge_rev.len());
     println!("num paths {:13} {:5}M", state.paths.len(), state.paths.len() / 1_000_000);
+    return state
 }
 
 // Kris' rewriting/maintenance strategy.
@@ -210,7 +250,7 @@ fn phase2_kris(state: &mut State, a: u32, b: u32, c: u32) {
         }
         // 2. edge(c, Z) → new path edge(b,c) edge(c,Z)
         if let Some(zs) = state.edge_map.get(&c) {
-            for &z in zs { state.paths.push((a, b, z)) }
+            for &z in zs { state.paths.push((b, c, z)) }
         }
         // 3.              new path edge(a,b) edge(b,c)
         state.paths.push((a, b, c));
@@ -221,7 +261,7 @@ fn phase2_kris(state: &mut State, a: u32, b: u32, c: u32) {
         }
         // 2. edge(c,Z) → new path edge(b,c) edge(c,Z)
         if let Some(zs) = state.edge_map.get(&c) {
-            for &z in zs { state.paths.push((a, b, z)) }
+            for &z in zs { state.paths.push((b, c, z)) }
         }
         // 3.              new path edge(a,b) edge(b,c)
         state.paths.push((a, b, c));
@@ -237,20 +277,21 @@ fn phase2_kris(state: &mut State, a: u32, b: u32, c: u32) {
     state.edge_rev.entry(c).or_default().push(b);
 }
 
+#[allow(dead_code)]
 #[inline(always)]
 fn phase2_kris_modified(state: &mut State, a: u32, b: u32, c: u32) {
-    // 1. edge(X, a) → new path edge(X,a) edge(b,c)
+    // 1. edge(X, a) → new path edge(X,a) edge(a,b)
     if let Some(xs) = state.edge_rev.get(&a) {
         for &x in xs { state.paths.push((x, a, b)) }
     }
     // 2. edge(c, Z) → new path edge(b,c) edge(c,Z)
     if let Some(zs) = state.edge_map.get(&c) {
-        for &z in zs { state.paths.push((a, b, z)) }
+        for &z in zs { state.paths.push((b, c, z)) }
     }
     // 3.              new path edge(a,b) edge(b,c)
     state.paths.push((a, b, c));
     // 4. a == c     → new path edge(b,c) edge(a,b)  since c=a
-    if a ==c { state.paths.push((b, a, b)) }
+    if a == c { state.paths.push((b, a, b)) }
     // Add edges (a,b) and (b,c). Update indices.
     state.edges.push((a, b));
     state.edges.push((b, c));
@@ -261,7 +302,7 @@ fn phase2_kris_modified(state: &mut State, a: u32, b: u32, c: u32) {
 }
 
 #[inline(always)]
-fn phase2_delta_tiny_batch(state: &mut State, a: u32, b: u32, c: u32) {
+fn phase2_tiny_batch_delta(state: &mut State, a: u32, b: u32, c: u32) {
     let new_edges = [(a,b), (b,c)];
 
     // Run the delta rule treating new_edges as a tiny relation. This is "batch at a
@@ -297,28 +338,28 @@ fn phase2_delta_tiny_batch(state: &mut State, a: u32, b: u32, c: u32) {
 }
 
 #[inline(always)]
-fn phase2_delta_tuple(state: &mut State, a: u32, b: u32, c: u32) {
+fn phase2_tuple_delta(state: &mut State, a: u32, b: u32, c: u32) {
     let new_edges = [(a,b), (b,c)];
     // For each new edge, run single-tuple delta rules, add it to edge list,
     // and update indices.
-    for (v, u) in new_edges {
+    for (t, u) in new_edges {
         // Update query results.
         //   Δ(edge(x,y) edge(y,z))
         // = Δedge(x,y)  edge(y,z)
-        if let Some(zs) = state.edge_map.get(&u) {
-            for &z in zs { state.paths.push((v, u, z)) }
+        if let Some(vs) = state.edge_map.get(&u) {
+            for &v in vs { state.paths.push((t, u, v)) }
         }
         // + edge(x,y)  Δedge(y,z)
-        if let Some(xs) = state.edge_rev.get(&v) {
-            for &x in xs { state.paths.push((x, v, u)) }
+        if let Some(ss) = state.edge_rev.get(&t) {
+            for &s in ss { state.paths.push((s, t, u)) }
         }
         // + Δedge(x,y) Δedge(y,z)
-        if u == v {             // NB. this case seems never to happen.
-            state.paths.push((v, u, v));
+        if t == u {             // NB. this case seems never to happen.
+            state.paths.push((t, t, t));
         }
         // Add edge and update indices.
-        state.edges.push((v, u));
-        state.edge_map.entry(v).or_default().push(u);
-        state.edge_rev.entry(u).or_default().push(v);
+        state.edges.push((t, u));
+        state.edge_map.entry(t).or_default().push(u);
+        state.edge_rev.entry(u).or_default().push(t);
     }
 }
