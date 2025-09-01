@@ -199,8 +199,9 @@ impl<A> LSM<A> {
 // https://github.com/frankmcsherry/blog/blob/master/posts/2025-06-03.md#data-oriented-design--columns
 impl<K, V> LSM<Pair<K, V>> where
     K: Copy + Ord,
-    // V: Clone + Add needed for Layer::merged. We might be able to get rid of
-    // the Clone requirement with some careful programming.
+    // V: Add used to merge values of the same key on different layers.
+    // V: Clone needed to use the non-destructive Layer::merged().
+    // By contrast the in-place Layer::merge() doesn't clone.
     V: Clone + Add,
 {
     pub fn push(&mut self, layer: Layer<Pair<K, V>>) {
@@ -223,8 +224,8 @@ impl<K, V> LSM<Pair<K, V>> where
                 let y = self.layers.pop().unwrap();
                 // NB. merge() gives a SMALL speedup over than merged(). trans on 100k edges:
                 // 6.3s (merge) vs 6.15s (merged) = 1.025x speedup
-                // self.layers.push(x.merge(y));
-                self.layers.push(x.merged(&y));
+                self.layers.push(x.merge(y));
+                // self.layers.push(x.merged(&y));
                 self.layers.sort_by(|x, y| y.len().cmp(&x.len()));
             }
         }
@@ -232,7 +233,9 @@ impl<K, V> LSM<Pair<K, V>> where
         println!("Done! result:");
         self.debug_dump("  ");
     }
+}
 
+impl<K, V> LSM<Pair<K, V>> where K: Copy + Ord, V: Clone + Add {
     pub fn seeker(&self) -> impl Seek<Key = K, Value = V> {
         self.seek_with(|slice| tuples(slice, |x| x.key).map(|x| x.value.clone()))
             .map(|vs| {
