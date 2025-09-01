@@ -26,6 +26,7 @@ use std::time::Instant;
 // Set EDGES environment variable to override; EDGES=all for no limit.
 const DEFAULT_MAX_EDGES: usize = 80_000;
 const DEFAULT_ITERS: usize = 10_000;
+const DEFAULT_TRIALS: usize = 1;
 
 macro_rules! print_flush {
     ($($e:tt)*) => { { print!($($e)*); std::io::stdout().flush().unwrap() } }
@@ -90,6 +91,12 @@ fn load_edges_from<R: std::io::Read>(source: R, max_edges: Option<usize>) -> Vec
     return edges;
 }
 
+#[derive(Clone,Copy)]
+struct Config {
+    num_trials: usize,
+    num_iters: usize,
+}
+
 #[derive(Clone,PartialEq,Eq)]
 struct State {
     max_vertex: u32,
@@ -101,11 +108,18 @@ struct State {
 
 fn main() {
     let edges: Vec<(u32, u32)> = load_edges();
+    let num_trials = match var("TRIALS") {
+        Ok(s) => parse_number(s).expect("malformed TRIALS"),
+        Err(VarError::NotPresent) => DEFAULT_TRIALS,
+        Err(VarError::NotUnicode(_)) => panic!("TRIALS not valid unicode"),
+    };
+    assert!(0 < num_trials);
     let num_iters = match var("ITERS") {
         Ok(s) => parse_number(s).expect("malformed ITERS"),
         Err(VarError::NotPresent) => DEFAULT_ITERS,
         Err(VarError::NotUnicode(_)) => panic!("ITERS not valid unicode"),
     };
+    let config = Config { num_trials, num_iters };
     assert!(!edges.is_empty());
 
     // Build indices.
@@ -144,18 +158,13 @@ fn main() {
 
     // Repeatedly rewrite and update matches (Kris strategy).
     let state = State { max_vertex, edges, edge_map, edge_rev, paths };
-    print_flush!("cloning state ");
-    let (clone_secs, state2) = timed_secs(|| state.clone());
-    println!("took {:.2}s", clone_secs);
-    let mut kris_state = phase2("KRIS", num_iters, state2, phase2_kris);
-
-    let mut kris2_state = phase2("KRIS MODIFIED", num_iters, state.clone(), phase2_kris_modified);
 
     // Repeatedly rewrite and update matches (tuple-at-a-time delta rules).
-    let mut batch_state = phase2("TINY BATCH DELTA", num_iters, state.clone(), phase2_tiny_batch_delta);
-
+    let mut tuple_state = phase2("TUPLE DELTA", config, &state, phase2_tuple_delta);
     // Repeatedly rewrite and update matches (tuple-at-a-time delta rules).
-    let mut tuple_state = phase2("TUPLE DELTA", num_iters, state, phase2_tuple_delta);
+    let mut batch_state = phase2("TINY BATCH DELTA", config, &state, phase2_tiny_batch_delta);
+    let mut kris_state = phase2("KRIS", config, &state, phase2_kris);
+    // let mut kris2_state = phase2("KRIS MODIFIED", config, &state, phase2_kris_modified);
 
     if false {            // same results/no duplicates bug checks
         // Test that all outputs agree and there are no duplicate paths.
@@ -163,11 +172,11 @@ fn main() {
         println!();
         println!("Sorting...");
         kris_state.paths.sort(); println!("kris sorted");
-        kris2_state.paths.sort(); println!("kris2 sorted");
+        // kris2_state.paths.sort(); println!("kris2 sorted");
         tuple_state.paths.sort(); println!("tuple sorted");
         batch_state.paths.sort(); println!("batch sorted");
         println!("Checking equality...");
-        assert!(kris_state.paths == kris2_state.paths);
+        // assert!(kris_state.paths == kris2_state.paths);
         assert!(tuple_state.paths == batch_state.paths);
         assert!(kris_state.paths == tuple_state.paths);
         println!("All results equal.");
@@ -205,38 +214,55 @@ fn main() {
 
 fn phase2<F: Fn(&mut State, u32, u32, u32)>(
     name: &str,
-    num_iters: usize,
-    mut state: State,
+    config: Config,
+    init_state: &State,
     rewrite: F,
 ) -> State {
     println!("\n# PHASE 2, {name}: Repeatedly complete triangles and find new 2-edge paths.");
-    let phase2 = Instant::now();
 
-    for iter in 1..=num_iters {
-        if iter % 1_000_000 == 0 {
-            println!("{} million iterations", iter / 1_000_000);
+    let mut times_secs: Vec<f32> = Vec::new();
+    print_flush!("cloned state ");
+    let (clone_secs, mut state) = timed_secs(|| init_state.clone());
+    println!("in {:.2}s", clone_secs);
+
+    for trial in 1..=config.num_trials {
+        if trial != 1 {
+            state = init_state.clone();
         }
 
-        // "Fibonacci hashing", kinda. Except we're still using modulo.
-        // https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
-        let edge_idx = iter.wrapping_mul(11400714819323198485) % state.edges.len();
-        let (a, c) = state.edges[edge_idx];
-
-        // Create a new vertex b.
-        state.max_vertex += 1;
-        let b = state.max_vertex;
-
-        // Do rewrite & update query results.
-        rewrite(&mut state, a, b, c);
+        let phase2 = Instant::now();
+        print_flush!("trial {trial} iters  ");
+        for iter in 1..=config.num_iters {
+            if iter % 1_000_000 == 0 {
+                print_flush!(" {}M", iter / 1_000_000);
+            }
+            // "Fibonacci hashing", kinda. Except we're still using modulo.
+            // https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
+            let edge_idx = iter.wrapping_mul(11400714819323198485) % state.edges.len();
+            let (a, c) = state.edges[edge_idx];
+            // Create a new vertex b.
+            state.max_vertex += 1;
+            let b = state.max_vertex;
+            // Do rewrite & update query results.
+            rewrite(&mut state, a, b, c);
+        }
+        println!();
+        times_secs.push(phase2.elapsed().as_secs_f32());
     }
 
-    let phase2_secs = phase2.elapsed().as_secs_f32();
-    println!("{phase2_secs:.2}s");
     println!("max_vertex     {:8}", state.max_vertex);
     println!("edges.len()    {:8} {:5}M", state.edges.len(), state.edges.len() / 1_000_000);
     println!("edge_map.len() {:8}", state.edge_map.len());
     println!("edge_rev.len() {:8}", state.edge_rev.len());
     println!("num paths {:13} {:5}M", state.paths.len(), state.paths.len() / 1_000_000);
+    if times_secs.len() == 1 {
+        println!("time            {:7.2}s", times_secs[0]);
+    } else {
+        print!("times              ");
+        for time in times_secs.iter() { print!("{time:.2}s "); }
+        println!();
+        println!("min time        {:7.2}s", times_secs.iter().min_by(|x, y| x.partial_cmp(y).unwrap()).unwrap());
+    }
     return state
 }
 
