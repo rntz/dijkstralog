@@ -156,12 +156,10 @@ fn main() {
     println!("{phase1_secs:.2}s");
     println!("num paths {:13} {:5}M", paths.len(), paths.len() / 1_000_000);
 
-    // Repeatedly rewrite and update matches (Kris strategy).
     let state = State { max_vertex, edges, edge_map, edge_rev, paths };
 
-    // Repeatedly rewrite and update matches (tuple-at-a-time delta rules).
+    // Repeatedly rewrite and update matches with various strategies.
     let mut tuple_state = phase2("TUPLE DELTA", config, &state, phase2_tuple_delta);
-    // Repeatedly rewrite and update matches (tuple-at-a-time delta rules).
     let mut batch_state = phase2("TINY BATCH DELTA", config, &state, phase2_tiny_batch_delta);
     let mut kris_state = phase2("KRIS", config, &state, phase2_kris);
     // let mut kris2_state = phase2("KRIS MODIFIED", config, &state, phase2_kris_modified);
