@@ -162,22 +162,22 @@ fn main() {
 
     // Repeatedly rewrite and update matches with various strategies.
 
-    // // These strategies actually write out the new paths. Because there are many paths,
-    // // the cost here is dominated by memory access, which is the same across all
-    // // strategies, so it doesn't give a good picture of the relative cost of different
-    // // strategies.
+    // These strategies actually write out the new paths. Because there are many paths,
+    // the cost here is dominated by memory access, which is the same across all
+    // strategies, so it doesn't give a good picture of the relative cost of different
+    // strategies.
 
-    // let mut tuple_state = phase2("TUPLE DELTA", config, &state, phase2_tuple_delta);
-    // let mut batch_state = phase2("TINY BATCH DELTA", config, &state, phase2_tiny_batch_delta);
-    // let mut kris_state = phase2("KRIS", config, &state, phase2_kris);
+    let mut kris_state = phase2("KRIS", config, &state, phase2_kris);
+    let mut batch_state = phase2("TINY BATCH DELTA", config, &state, phase2_tiny_batch_delta);
+    let mut tuple_state = phase2("TUPLE DELTA", config, &state, phase2_tuple_delta);
     // let mut kris2_state = phase2("KRIS MODIFIED", config, &state, phase2_kris_modified);
 
     // These strategies merely count the number of paths found. This lets us more
     // accurately measure the difference between the strategies.
     phase2("REWRITES ONLY", config, &state, phase2_rewrite_only);
-    let mut kris_state  = phase2("COUNT KRIS", config, &state, phase2_count_kris);
-    let mut batch_state = phase2("COUNT TINY BATCH", config, &state, phase2_count_tiny_batch_delta);
-    let mut tuple_state = phase2("COUNT TUPLE DELTA", config, &state, phase2_count_tuple_delta);
+    phase2("COUNT KRIS", config, &state, phase2_count_kris);
+    phase2("COUNT TINY BATCH", config, &state, phase2_count_tiny_batch_delta);
+    phase2("COUNT TUPLE DELTA", config, &state, phase2_count_tuple_delta);
 
     if false {            // same results/no duplicates bug checks
         // Test that all outputs agree and there are no duplicate paths.
