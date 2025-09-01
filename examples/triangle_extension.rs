@@ -104,6 +104,7 @@ struct State {
     edge_map: HashMap<u32, Vec<u32>>,
     edge_rev: HashMap<u32, Vec<u32>>,
     paths: Vec<(u32, u32, u32)>,
+    npaths: usize,
 }
 
 fn main() {
@@ -156,13 +157,27 @@ fn main() {
     println!("{phase1_secs:.2}s");
     println!("num paths {:13} {:5}M", paths.len(), paths.len() / 1_000_000);
 
-    let state = State { max_vertex, edges, edge_map, edge_rev, paths };
+    let npaths = paths.len();
+    let state = State { max_vertex, edges, edge_map, edge_rev, paths, npaths };
 
     // Repeatedly rewrite and update matches with various strategies.
-    let mut tuple_state = phase2("TUPLE DELTA", config, &state, phase2_tuple_delta);
-    let mut batch_state = phase2("TINY BATCH DELTA", config, &state, phase2_tiny_batch_delta);
-    let mut kris_state = phase2("KRIS", config, &state, phase2_kris);
+
+    // // These strategies actually write out the new paths. Because there are many paths,
+    // // the cost here is dominated by memory access, which is the same across all
+    // // strategies, so it doesn't give a good picture of the relative cost of different
+    // // strategies.
+
+    // let mut tuple_state = phase2("TUPLE DELTA", config, &state, phase2_tuple_delta);
+    // let mut batch_state = phase2("TINY BATCH DELTA", config, &state, phase2_tiny_batch_delta);
+    // let mut kris_state = phase2("KRIS", config, &state, phase2_kris);
     // let mut kris2_state = phase2("KRIS MODIFIED", config, &state, phase2_kris_modified);
+
+    // These strategies merely count the number of paths found. This lets us more
+    // accurately measure the difference between the strategies.
+    phase2("REWRITES ONLY", config, &state, phase2_rewrite_only);
+    let mut kris_state  = phase2("COUNT KRIS", config, &state, phase2_count_kris);
+    let mut batch_state = phase2("COUNT TINY BATCH", config, &state, phase2_count_tiny_batch_delta);
+    let mut tuple_state = phase2("COUNT TUPLE DELTA", config, &state, phase2_count_tuple_delta);
 
     if false {            // same results/no duplicates bug checks
         // Test that all outputs agree and there are no duplicate paths.
@@ -264,7 +279,25 @@ fn phase2<F: Fn(&mut State, u32, u32, u32)>(
     return state
 }
 
-// Kris' rewriting/maintenance strategy.
+// ---------- REWRITE ONLY STRATEGY ----------
+//
+// This does not maintain query results and only performs rewrites. This provides a
+// baseline/control: how much time is spent merely on rewriting plus other overheads, and
+// not on maintenance?
+#[allow(dead_code)]
+#[inline(always)]
+fn phase2_rewrite_only(state: &mut State, a: u32, b: u32, c: u32) {
+    state.edges.push((a, b));
+    state.edges.push((b, c));
+    state.edge_map.entry(a).or_default().push(b);
+    state.edge_map.entry(b).or_default().push(c);
+    state.edge_rev.entry(b).or_default().push(a);
+    state.edge_rev.entry(c).or_default().push(b);
+}
+
+
+// ---------- KRIS' REWRITING/MAINTENANCE STRATEGY ----------
+#[allow(dead_code)]
 #[inline(always)]
 fn phase2_kris(state: &mut State, a: u32, b: u32, c: u32) {
     if a != c {
@@ -303,6 +336,42 @@ fn phase2_kris(state: &mut State, a: u32, b: u32, c: u32) {
 
 #[allow(dead_code)]
 #[inline(always)]
+fn phase2_count_kris(state: &mut State, a: u32, b: u32, c: u32) {
+    if a != c {
+        // 1. edge(X, a) → new path edge(X,a) edge(b,c)
+        if let Some(xs) = state.edge_rev.get(&a) {
+            for &_ in xs { state.npaths += 1; }
+        }
+        // 2. edge(c, Z) → new path edge(b,c) edge(c,Z)
+        if let Some(zs) = state.edge_map.get(&c) {
+            for &_ in zs { state.npaths += 1; }
+        }
+        // 3.              new path edge(a,b) edge(b,c)
+        state.npaths += 1;
+    } else { // a == c
+        // 1. edge(X,a) → new path edge(X,a) edge(b,c)
+        if let Some(xs) = state.edge_rev.get(&a) {
+            for &_ in xs { state.npaths += 1 }
+        }
+        // 2. edge(c,Z) → new path edge(b,c) edge(c,Z)
+        if let Some(zs) = state.edge_map.get(&c) {
+            for &_ in zs { state.npaths += 1 }
+        }
+        // 3.              new path edge(a,b) edge(b,c)
+        state.npaths += 1;
+        // 4.              new path edge(b,c) edge(a,b)  since c=a
+        state.npaths += 1
+    }
+    state.edges.push((a, b));
+    state.edges.push((b, c));
+    state.edge_map.entry(a).or_default().push(b);
+    state.edge_map.entry(b).or_default().push(c);
+    state.edge_rev.entry(b).or_default().push(a);
+    state.edge_rev.entry(c).or_default().push(b);
+}
+
+#[allow(dead_code)]
+#[inline(always)]
 fn phase2_kris_modified(state: &mut State, a: u32, b: u32, c: u32) {
     // 1. edge(X, a) → new path edge(X,a) edge(a,b)
     if let Some(xs) = state.edge_rev.get(&a) {
@@ -325,6 +394,9 @@ fn phase2_kris_modified(state: &mut State, a: u32, b: u32, c: u32) {
     state.edge_rev.entry(c).or_default().push(b);
 }
 
+
+// ---------- TINY BATCH DELTA RULE MAINTENANCE STRATEGY ----------
+#[allow(dead_code)]
 #[inline(always)]
 fn phase2_tiny_batch_delta(state: &mut State, a: u32, b: u32, c: u32) {
     let new_edges = [(a,b), (b,c)];
@@ -361,6 +433,46 @@ fn phase2_tiny_batch_delta(state: &mut State, a: u32, b: u32, c: u32) {
     state.edge_rev.entry(c).or_default().push(b);
 }
 
+#[allow(dead_code)]
+#[inline(always)]
+fn phase2_count_tiny_batch_delta(state: &mut State, a: u32, b: u32, c: u32) {
+    let new_edges = [(a,b), (b,c)];
+
+    // Run the delta rule treating new_edges as a tiny relation. This is "batch at a
+    // time" but the batches are tiny - one batch per rewrite rule firing. I've
+    // optimized the plan to use the fact that new_edges is small by not bothering to
+    // index new_edges and always iterating over new_edges first.
+    for &(_x, y) in &new_edges {
+        // Δedge(x,y)  edge(y,z)
+        if let Some(zs) = state.edge_map.get(&y) {
+            for &_ in zs { state.npaths += 1 }
+        }
+        // Δedge(x,y) Δedge(y,z)
+        for &(y2, _z) in &new_edges {
+            if y == y2 { state.npaths += 1 }
+        }
+    }
+
+    //  edge(x,y) Δedge(y,z)
+    for (y, _z) in new_edges {
+        if let Some(xs) = state.edge_rev.get(&y) {
+            for &_ in xs { state.npaths += 1 }
+        }
+    }
+
+    // Add edges (a,b) and (b,c). Update indices.
+    // NB. edges is NOT SORTED! or if it was before, it isn't now.
+    state.edges.push((a, b));
+    state.edges.push((b, c));
+    state.edge_map.entry(a).or_default().push(b);
+    state.edge_map.entry(b).or_default().push(c);
+    state.edge_rev.entry(b).or_default().push(a);
+    state.edge_rev.entry(c).or_default().push(b);
+}
+
+
+// ---------- TUPLE AT A TIME DELTA RULE STRATEGY ----------
+#[allow(dead_code)]
 #[inline(always)]
 fn phase2_tuple_delta(state: &mut State, a: u32, b: u32, c: u32) {
     let new_edges = [(a,b), (b,c)];
@@ -380,6 +492,34 @@ fn phase2_tuple_delta(state: &mut State, a: u32, b: u32, c: u32) {
         // + Δedge(x,y) Δedge(y,z)
         if t == u {             // NB. this case seems never to happen.
             state.paths.push((t, t, t));
+        }
+        // Add edge and update indices.
+        state.edges.push((t, u));
+        state.edge_map.entry(t).or_default().push(u);
+        state.edge_rev.entry(u).or_default().push(t);
+    }
+}
+
+#[allow(dead_code)]
+#[inline(always)]
+fn phase2_count_tuple_delta(state: &mut State, a: u32, b: u32, c: u32) {
+    let new_edges = [(a,b), (b,c)];
+    // For each new edge, run single-tuple delta rules, add it to edge list,
+    // and update indices.
+    for (t, u) in new_edges {
+        // Update query results.
+        //   Δ(edge(x,y) edge(y,z))
+        // = Δedge(x,y)  edge(y,z)
+        if let Some(vs) = state.edge_map.get(&u) {
+            for &_ in vs { state.npaths += 1 }
+        }
+        // + edge(x,y)  Δedge(y,z)
+        if let Some(ss) = state.edge_rev.get(&t) {
+            for &_ in ss { state.npaths += 1 }
+        }
+        // + Δedge(x,y) Δedge(y,z)
+        if t == u {             // NB. this case seems never to happen.
+            state.npaths += 1;
         }
         // Add edge and update indices.
         state.edges.push((t, u));
