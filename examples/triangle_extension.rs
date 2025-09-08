@@ -4,17 +4,29 @@
 // QUERY    {1,2,3} edge(1,2) edge(2,3)
 // REWRITE  {a,c} edge(a,c) → {a,b,c} edge(a,c) edge(a,b) edge(b,c)
 //
-// MAINTENANCE CASES
-//
-// STRATEGY FOR REWRITING
+// STRATEGY
 //
 // Repeatedly pick an edge(a,c) from the current edge-set at random. The rewrite
-// isn't idempotent/monic so there's no point in splitting into "processed"
+// isn't idempotent so there's no point in splitting into "processed"
 // edges and "unprocessed" edges to try to hit a fixed point.
 //
 // STRATEGY FOR QUERY MAINTENANCE
 //
-// Use hash-indices everywhere.
+// The rewrite can introduce 4 classes of new matches:
+//
+// 1. ∀ edge(X,a)
+//    → edge(X,a) edge(a,b)     is a new 2-length path
+//    so look for edges into `a` using a HashMap index.
+//
+// 2. ∀ edge(c,X)
+//    → edge(b,c) edge(c,X)     is a new 2-length path
+//    so look for edges out of `c` using a HashMap index.
+//
+// 3. edge(a,b) edge(b,c) is always a new 2-length path.
+// 4. if a = c then edge(b,c) edge(a,b) is a new 2-length path.
+//
+// So we need two hash-indexes on edge(a,b):
+// forward a → b for (2), and reverse b → a for (1).
 
 use std::io::prelude::*;
 use std::collections::HashMap;
@@ -167,17 +179,17 @@ fn main() {
     // strategies, so it doesn't give a good picture of the relative cost of different
     // strategies.
 
-    let mut kris_state = phase2("KRIS", config, &state, phase2_kris);
-    let mut batch_state = phase2("TINY BATCH DELTA", config, &state, phase2_tiny_batch_delta);
-    let mut tuple_state = phase2("TUPLE DELTA", config, &state, phase2_tuple_delta);
-    // let mut kris2_state = phase2("KRIS MODIFIED", config, &state, phase2_kris_modified);
-
     // These strategies merely count the number of paths found. This lets us more
     // accurately measure the difference between the strategies.
     phase2("REWRITES ONLY", config, &state, phase2_rewrite_only);
     phase2("COUNT KRIS", config, &state, phase2_count_kris);
     phase2("COUNT TINY BATCH", config, &state, phase2_count_tiny_batch_delta);
     phase2("COUNT TUPLE DELTA", config, &state, phase2_count_tuple_delta);
+
+    let mut kris_state = phase2("KRIS", config, &state, phase2_kris);
+    let mut batch_state = phase2("TINY BATCH DELTA", config, &state, phase2_tiny_batch_delta);
+    let mut tuple_state = phase2("TUPLE DELTA", config, &state, phase2_tuple_delta);
+    // let mut kris2_state = phase2("KRIS MODIFIED", config, &state, phase2_kris_modified);
 
     if false {            // same results/no duplicates bug checks
         // Test that all outputs agree and there are no duplicate paths.
