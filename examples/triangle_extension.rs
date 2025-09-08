@@ -34,7 +34,6 @@ use std::env::{var, VarError};
 use std::str::FromStr;
 use std::time::Instant;
 
-// Takes ≤ 3s on my Macbook M1 Pro.
 // Set EDGES environment variable to override; EDGES=all for no limit.
 const DEFAULT_MAX_EDGES: usize = 80_000;
 const DEFAULT_ITERS: usize = 10_000;
