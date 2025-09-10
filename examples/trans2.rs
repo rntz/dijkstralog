@@ -109,61 +109,45 @@ fn main() {
         // -- COMPUTE DELTA:  Δtrans' a c = Δtrans a b * edge b c
         print!("Delta rules ");
         std::io::stdout().flush().unwrap();
-        let mut new_paths: Vec<(u32, u32)> = Vec::new();
-        dijkstralog::nest! {
-            for (a, delta_a) in ranges(delta_trans.as_slice(), |x| x.key.0).iter();
-            for (_b, (_delta_ab, edges_b)) in tuples(delta_a, |x| x.key.1)
-                .join(ranges(edges, |x| x.0))
-                .iter();
-            for &(_, c) in edges_b;
-            new_paths.push((a, c))
+        let mut new_paths: Vec<Key<(u32, u32)>> = Vec::new();
+        for (a, delta_a) in ranges(delta_trans.as_slice(), |x| x.key.0).iter() {
+            let i = new_paths.len();
+            dijkstralog::nest! {
+                for (_b, (_delta_ab, edges_b)) in tuples(delta_a, |x| x.key.1)
+                    .join(ranges(edges, |x| x.0))
+                    .iter();
+                for &(_, c) in edges_b;
+                // TODO: What if I eliminating existing edges _here_, instead?
+                new_paths.push((a, c).into())
+            }
+            // We're projecting away b. So we sort by the remainder (in this case, c) to
+            // ensure our output ends up in sorted order. Sorting each group separately is
+            // more efficient than doing one big sort at the end.
+            new_paths[i..].sort_by_key(|x| x.key.1);
         }
         let npaths = new_paths.len();
         println!("found {} ≈ {:.0e} potential paths.", npaths, npaths);
+        debug_assert!(new_paths.is_sorted_by_key(|x| x.key));
 
         // --  UPDATE TRANS:  trans' = trans + Δtrans
         trans.push(delta_trans);
         // This^ consumes delta_trans! implications for evaluation order of full
         // Datalog system?
 
-        // This is a trick that it would be slightly annoying to get a Datalog
-        // compiler to do.
-        #[allow(dead_code)]
-        fn sort_new_paths(new_paths: &mut [(u32, u32)]) {
-            debug_assert!(new_paths.is_sorted_by_key(|x| x.0));
-            let mut i = 0;
-            while i < new_paths.len() {
-                let (a, _) = new_paths[i];
-                // Could use galloping search here, might be faster (might not!), but the
-                // cost is completely dominated by sorting.
-                let j = new_paths.partition_point(|x| x.0 <= a);
-                debug_assert!(i < j);
-                debug_assert!(new_paths[j-1].0 == a);
-                new_paths[i..j].sort_by_key(|x| x.1);
-                debug_assert!(new_paths[i..j].is_sorted());
-                i = j;
-            }
-        }
-
-        println!("Sorting {} ≈ {:.0e} new paths...", npaths, npaths);
-        // new_paths.sort();       // <-- THE PLURALITY OF OUR TIME IS SPENT HERE
-        sort_new_paths(new_paths.as_mut_slice()); // measurably faster but not amazingly so
-        println!("Sorted, now deduplicating...");
-        new_paths.dedup();      // is this slow?
-        println!("Deduplicated to {} paths, now minifying...", new_paths.len());
-        let mut new_delta_trans: Vec<Key<(u32, u32)>> = Vec::with_capacity(new_paths.len());
+        println!("Deduplicating and minifying...");
         let mut trans_seek = trans.seeker();
-        for ac in new_paths {
-            // this is taking a significant amount of time!
-            if trans_seek.seek_to(ac).is_none() {
-                if DEBUG { println!("found {:>2} -> {:<2}", ac.0, ac.1); }
-                new_delta_trans.push(ac.into())
-            } else {
-                if DEBUG { println!("      {:>2} -> {:<2} already found", ac.0, ac.1); }
-            }
-        }
+        let mut prev = None;
+        new_paths.retain(|ac| {
+            // For semiring semantics... I'm not sure what we'd do here.
+            if prev.is_some_and(|x| x == ac.key) { return false }
+            prev = Some(ac.key);
+            // For semiring semantics, here we'd use a minifying operator followed by an
+            // is_zero test.
+            return trans_seek.seek_to(ac.key).is_none()
+        });
+
         println!("Minified. Time for a new iteration.");
-        delta_trans = Layer::from_sorted(new_delta_trans);
+        delta_trans = Layer::from_sorted(new_paths);
     }
 
     println!();
@@ -182,6 +166,5 @@ fn main() {
     // if DEBUG {
     //     println!("paths: {:?}", paths.as_slice());
     // }
-    // // TODO: debug-print the layers of our LSM.
 
 }
