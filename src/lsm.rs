@@ -233,6 +233,27 @@ impl<K, V> LSM<Pair<K, V>> where
         println!("Done! result:");
         self.debug_dump("  ");
     }
+
+    // Merges all layers into one.
+    pub fn into_layer(mut self) -> Layer<Pair<K, V>> {
+        let mut layer = match self.layers.pop() {
+            None => return Layer::new(),
+            Some(x) => x
+        };
+        while let Some(next) = self.layers.pop() {
+            layer = layer.merge(next);
+        }
+        return layer;
+    }
+
+    // Compresses LSM down to one layer. Can be useful to speed up future accesses.
+    pub fn compress(&mut self) {
+        let mut layer = match self.layers.pop() { None => return, Some(x) => x };
+        while let Some(next) = self.layers.pop() {
+            layer = layer.merge(next);
+        }
+        self.layers.push(layer);
+    }
 }
 
 impl<K, V> LSM<Pair<K, V>> where K: Copy + Ord, V: Clone + Add {
