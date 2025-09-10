@@ -1,7 +1,12 @@
-// Use eg the SNAP soc-LiveJournal1.txt data set:
-// https://snap.stanford.edu/data/soc-LiveJournal1.html
-// https://snap.stanford.edu/data/soc-LiveJournal1.txt.gz
-// total edges in soc-LiveJournal1.txt: 68,993,773
+// DIFF FROM TRANS2.RS:
+//
+// Instead of minifying the materialized Δtrans, we minify by excluding entries from
+// `trans` when we join with `Δtrans` in the delta rules.
+//
+// This seemed faster than trans2 on soc-LiveJournal1. However, it's slower on wiki-Vote.
+// I think the speedup may be workload-dependent and/or an artifact of the fact that we
+// only use a subset of the edges of soc-LiveJournal1 when testing (the full dataset is
+// too large).
 
 use std::io::prelude::*;
 
@@ -10,7 +15,7 @@ use dijkstralog::lsm::{LSM, Layer, Key};
 
 // Takes ≤ 3s on my Macbook M1 Pro.
 // Set EDGES environment variable to override; EDGES=all for no limit.
-const DEFAULT_MAX_EDGES: usize = 80_000;
+const DEFAULT_MAX_EDGES: usize = 110_000;
 
 macro_rules! print_flush {
     ($($e:tt)*) => { { print!($($e)*); std::io::stdout().flush().unwrap() } }
@@ -20,8 +25,10 @@ fn load_edges() -> Vec<(u32, u32)> {
     // TODO: use first std::env::args as data file if present
     use std::fs::File;
     use std::path::Path;
-    let path = Path::new("data/soc-LiveJournal1.txt");
-    let file = File::open(&path).expect("couldn't open soc-LiveJournal1.txt");
+    let path = Path::new("data/wiki-Vote.txt");
+    let file = File::open(&path).expect("couldn't open wiki-Vote.txt");
+    // let path = Path::new("data/soc-LiveJournal1.txt");
+    // let file = File::open(&path).expect("couldn't open soc-LiveJournal1.txt");
     use std::env::{var, VarError};
     let max_edges: Option<usize> = match var("EDGES") {
         Err(VarError::NotPresent) => Some(DEFAULT_MAX_EDGES), // default
@@ -150,13 +157,23 @@ fn main() {
     println!("Fixed point reached. {} ≈ {:.0e} paths in LSM:", size, size);
     trans.debug_dump(" ");
 
-    // Comment the rest out if you don't care about just getting one big vector.
-    print_flush!("Merging all paths into one vector... ");
-    let paths: Vec<(u32, u32)> = trans.iter().map(|x| x.0).collect();
-    println!("done.");
-    println!("Found {} = {:.2e} paths", paths.len(), paths.len());
-    if DEBUG {
-        println!("paths: {:?}", paths.as_slice());
-    }
+    // WHY IS THIS SO MUCH FASTER THAN COUNTING?!?!?! WTF?!?!
+    println!("Compressing...");
+    let trans = trans.into_layer();
+    let npaths = trans.len();
+    println!("found {npaths} ≈ {npaths:.0e} total paths.");
+
+    // print_flush!("Counting distinct paths... ");
+    // let npaths = trans.iter().count();
+    // println!("found {npaths} ≈ {:.0e}", npaths);
+
+    // // Comment the rest out if you don't care about just getting one big vector.
+    // print_flush!("Merging all paths into one vector... ");
+    // let paths: Vec<(u32, u32)> = trans.iter().map(|x| x.0).collect();
+    // println!("done.");
+    // println!("Found {} = {:.2e} paths", paths.len(), paths.len());
+    // if DEBUG {
+    //     println!("paths: {:?}", paths.as_slice());
+    // }
 
 }

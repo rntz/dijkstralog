@@ -10,7 +10,7 @@ use dijkstralog::lsm::{LSM, Layer, Key};
 
 // Takes ≤ 3s on my Macbook M1 Pro.
 // Set EDGES environment variable to override; EDGES=all for no limit.
-const DEFAULT_MAX_EDGES: usize = 80_000;
+const DEFAULT_MAX_EDGES: usize = 110_000;
 
 macro_rules! print_flush {
     ($($e:tt)*) => { { print!($($e)*); std::io::stdout().flush().unwrap() } }
@@ -20,8 +20,10 @@ fn load_edges() -> Vec<(u32, u32)> {
     // TODO: use first std::env::args as data file if present
     use std::fs::File;
     use std::path::Path;
-    let path = Path::new("data/soc-LiveJournal1.txt");
-    let file = File::open(&path).expect("couldn't open soc-LiveJournal1.txt");
+    let path = Path::new("data/wiki-Vote.txt");
+    let file = File::open(&path).expect("couldn't open wiki-Vote.txt");
+    // let path = Path::new("data/soc-LiveJournal1.txt");
+    // let file = File::open(&path).expect("couldn't open soc-LiveJournal1.txt");
     use std::env::{var, VarError};
     let max_edges: Option<usize> = match var("EDGES") {
         Err(VarError::NotPresent) => Some(DEFAULT_MAX_EDGES), // default

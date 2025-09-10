@@ -1,3 +1,14 @@
+// DIFF FROM TRANS.RS
+//
+// We do a projection, Q(a,c) <- ∃b. Δtrans(a,b) edge(b,c). The rhs generates (a,b,c)
+// tuples in sorted order. Projecting away b means the (a,c) tuples are not sorted.
+// However, they're still sorted by `a`, just each `a`-chunk needs sorting. In trans.rs we
+// do this either by sorting the entire results, or a post-processing step that identifies
+// the `a`-chunks by searching for them.
+//
+// Here, we sort each chunk as we generate it, during the projection step, taking
+// advantage of our variable-at-a-time nested loops.
+
 // Use eg the SNAP soc-LiveJournal1.txt data set:
 // https://snap.stanford.edu/data/soc-LiveJournal1.html
 // https://snap.stanford.edu/data/soc-LiveJournal1.txt.gz
@@ -10,7 +21,7 @@ use dijkstralog::lsm::{LSM, Layer, Key};
 
 // Takes ≤ 3s on my Macbook M1 Pro.
 // Set EDGES environment variable to override; EDGES=all for no limit.
-const DEFAULT_MAX_EDGES: usize = 80_000;
+const DEFAULT_MAX_EDGES: usize = 110_000;
 
 macro_rules! print_flush {
     ($($e:tt)*) => { { print!($($e)*); std::io::stdout().flush().unwrap() } }
@@ -20,8 +31,10 @@ fn load_edges() -> Vec<(u32, u32)> {
     // TODO: use first std::env::args as data file if present
     use std::fs::File;
     use std::path::Path;
-    let path = Path::new("data/soc-LiveJournal1.txt");
-    let file = File::open(&path).expect("couldn't open soc-LiveJournal1.txt");
+    let path = Path::new("data/wiki-Vote.txt");
+    let file = File::open(&path).expect("couldn't open wiki-Vote.txt");
+    // let path = Path::new("data/soc-LiveJournal1.txt");
+    // let file = File::open(&path).expect("couldn't open soc-LiveJournal1.txt");
     use std::env::{var, VarError};
     let max_edges: Option<usize> = match var("EDGES") {
         Err(VarError::NotPresent) => Some(DEFAULT_MAX_EDGES), // default
@@ -156,6 +169,10 @@ fn main() {
     let size = trans.layers().map(|l| l.len()).sum::<usize>();
     println!("Fixed point reached. {} ≈ {:.0e} paths in LSM:", size, size);
     trans.debug_dump(" ");
+
+    // print_flush!("Counting distinct paths... ");
+    // let npaths = trans.iter().count();
+    // println!("found {npaths} ≈ {:.0e}", npaths);
 
     // // Comment the rest out if you don't care about just getting one big vector.
     // print!("Merging all paths into one vector... ");
