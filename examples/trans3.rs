@@ -75,7 +75,7 @@ fn load_edges_from<R: std::io::Read>(source: R, max_edges: Option<usize>) -> Vec
         println!(", already sorted");
     } else {
         println!(", sorting...");
-        edges.sort();
+        edges.sort_unstable();
         println!("sorted!");
     }
     return edges;
@@ -133,7 +133,7 @@ fn main() {
                 // We're projecting away b. So we sort by the remainder (in this case, c) to
                 // ensure our output ends up in sorted order. Sorting each group separately is
                 // more efficient than doing one big sort at the end.
-                group_a.sort_by_key(|x| x.key.1);
+                group_a.sort_unstable_by_key(|x| x.key.1);
                 group_a.dedup();
                 new_paths.append(&mut group_a);
             }
@@ -157,7 +157,7 @@ fn main() {
     println!("Fixed point reached. {} ≈ {:.0e} paths in LSM:", size, size);
     trans.debug_dump(" ");
 
-    // WHY IS THIS SO MUCH FASTER THAN COUNTING?!?!?! WTF?!?!
+    // WHY IS THIS SO MUCH FASTER THAN COUNTING?!?!?!
     println!("Compressing...");
     let trans = trans.into_layer();
     let npaths = trans.len();

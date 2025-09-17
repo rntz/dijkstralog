@@ -8,6 +8,11 @@
 //
 // Here, we sort each chunk as we generate it, during the projection step, taking
 // advantage of our variable-at-a-time nested loops.
+//
+// HOWEVER, this is harder to parallelize! If I just replace these smaller sorts with
+// Rayon's par_sort_unstable, I get less speedup than doing the same in trans.rs, because
+// I've *sequentialized* all these little sorts. As a result, parallelizing trans.rs is
+// often faster than parallel trans2.rs (on my Macbook M1 Pro).
 
 // Use eg the SNAP soc-LiveJournal1.txt data set:
 // https://snap.stanford.edu/data/soc-LiveJournal1.html
@@ -31,10 +36,11 @@ fn load_edges() -> Vec<(u32, u32)> {
     // TODO: use first std::env::args as data file if present
     use std::fs::File;
     use std::path::Path;
-    let path = Path::new("data/wiki-Vote.txt");
-    let file = File::open(&path).expect("couldn't open wiki-Vote.txt");
+    // let path = Path::new("data/wiki-Vote.txt");
+    let path = Path::new("data/email-Enron.txt");
+    // let path = Path::new("data/soc-Epinions1.txt");
     // let path = Path::new("data/soc-LiveJournal1.txt");
-    // let file = File::open(&path).expect("couldn't open soc-LiveJournal1.txt");
+    let file = File::open(&path).expect("couldn't open file");
     use std::env::{var, VarError};
     let max_edges: Option<usize> = match var("EDGES") {
         Err(VarError::NotPresent) => Some(DEFAULT_MAX_EDGES), // default
@@ -81,7 +87,7 @@ fn load_edges_from<R: std::io::Read>(source: R, max_edges: Option<usize>) -> Vec
         println!(", already sorted");
     } else {
         println!(", sorting...");
-        edges.sort();
+        edges.sort_unstable();
         println!("sorted!");
     }
     return edges;
@@ -111,7 +117,7 @@ fn main() {
     );
 
     let mut itercount = 0;
-    while !delta_trans.as_slice().is_empty() {
+    while !delta_trans.is_empty() {
         itercount += 1;
         println!("\n-- iter {itercount} --");
         let ntrans = trans.layers().map(|l| l.len()).sum::<usize>();
@@ -120,8 +126,7 @@ fn main() {
         println!("      delta_trans: {ndelta:>10} ≈ {ndelta:3.0e}");
 
         // -- COMPUTE DELTA:  Δtrans' a c = Δtrans a b * edge b c
-        print!("Delta rules ");
-        std::io::stdout().flush().unwrap();
+        print_flush!("Delta rules ");
         let mut new_paths: Vec<Key<(u32, u32)>> = Vec::new();
         for (a, delta_a) in ranges(delta_trans.as_slice(), |x| x.key.0).iter() {
             let i = new_paths.len();
@@ -130,13 +135,16 @@ fn main() {
                     .join(ranges(edges, |x| x.0))
                     .iter();
                 for &(_, c) in edges_b;
-                // TODO: What if I eliminating existing edges _here_, instead?
                 new_paths.push((a, c).into())
             }
             // We're projecting away b. So we sort by the remainder (in this case, c) to
             // ensure our output ends up in sorted order. Sorting each group separately is
             // more efficient than doing one big sort at the end.
-            new_paths[i..].sort_by_key(|x| x.key.1);
+
+            new_paths[i..].sort_unstable_by_key(|x| x.key.1);
+            // PARALLEL SORT
+            // use rayon::prelude::*;
+            // new_paths[i..].par_sort_unstable_by_key(|x| x.key.1);
         }
         let npaths = new_paths.len();
         println!("found {} ≈ {:.0e} potential paths.", npaths, npaths);
@@ -150,16 +158,25 @@ fn main() {
         println!("Deduplicating and minifying...");
         let mut trans_seek = trans.seeker();
         let mut prev = None;
+        let n_pre = new_paths.len();
+        let mut n_dup: usize = 0;
         new_paths.retain(|ac| {
             // For semiring semantics... I'm not sure what we'd do here.
-            if prev.is_some_and(|x| x == ac.key) { return false }
+            if prev.is_some_and(|x| x == ac.key) { n_dup += 1; return false }
             prev = Some(ac.key);
             // For semiring semantics, here we'd use a minifying operator followed by an
             // is_zero test.
             return trans_seek.seek_to(ac.key).is_none()
         });
+        let n_post = new_paths.len();
+        let n_known = n_pre - n_post - n_dup;
+        println!(
+            "Minified {n_pre:.1e} → {n_post:.1e}, new {:.0}%, dups {:.0}%, known {:.0}%",
+            100.0 * (n_post as f32 / n_pre as f32),
+            100.0 * (n_dup as f32 / n_pre as f32),
+            100.0 * (n_known as f32 / n_pre as f32),
+        );
 
-        println!("Minified. Time for a new iteration.");
         delta_trans = Layer::from_sorted(new_paths);
     }
 

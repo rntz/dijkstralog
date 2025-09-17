@@ -21,9 +21,9 @@ fn load_edges() -> Vec<(u32, u32)> {
     use std::fs::File;
     use std::path::Path;
     let path = Path::new("data/wiki-Vote.txt");
-    let file = File::open(&path).expect("couldn't open wiki-Vote.txt");
+    // let path = Path::new("data/email-Enron.txt");
     // let path = Path::new("data/soc-LiveJournal1.txt");
-    // let file = File::open(&path).expect("couldn't open soc-LiveJournal1.txt");
+    let file = File::open(&path).expect("couldn't open file");
     use std::env::{var, VarError};
     let max_edges: Option<usize> = match var("EDGES") {
         Err(VarError::NotPresent) => Some(DEFAULT_MAX_EDGES), // default
@@ -70,7 +70,7 @@ fn load_edges_from<R: std::io::Read>(source: R, max_edges: Option<usize>) -> Vec
         println!(", already sorted");
     } else {
         println!(", sorting...");
-        edges.sort();
+        edges.sort_unstable();
         println!("sorted!");
     }
     return edges;
@@ -141,15 +141,16 @@ fn main() {
                 let j = new_paths.partition_point(|x| x.0 <= a);
                 debug_assert!(i < j);
                 debug_assert!(new_paths[j-1].0 == a);
-                new_paths[i..j].sort_by_key(|x| x.1);
+                new_paths[i..j].sort_unstable_by_key(|x| x.1);
                 debug_assert!(new_paths[i..j].is_sorted());
                 i = j;
             }
         }
 
         println!("Sorting {} ≈ {:.0e} new paths...", npaths, npaths);
-        // new_paths.sort();       // <-- THE PLURALITY OF OUR TIME IS SPENT HERE
-        sort_new_paths(new_paths.as_mut_slice()); // measurably faster but not amazingly so
+        // new_paths.sort_unstable();       // <-- THE PLURALITY OF OUR TIME IS SPENT HERE
+        use rayon::prelude::*; new_paths.par_sort_unstable();
+        // sort_new_paths(new_paths.as_mut_slice()); // measurably faster but not amazingly so
         println!("Sorted, now deduplicating...");
         new_paths.dedup();      // is this slow?
         println!("Deduplicated to {} paths, now minifying...", new_paths.len());
