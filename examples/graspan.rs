@@ -33,8 +33,8 @@ fn main() {
 
     print!("Sorting e & n... ");
     std::io::stdout().flush().unwrap();
-    e.sort();
-    n.sort_by_key(|x| x.key);
+    e.sort_unstable();
+    n.sort_unstable_by_key(|x| x.key);
     println!("done.");
     let e: &[(u32, u32)] = e.as_slice();
 
@@ -76,7 +76,7 @@ fn main() {
         n.push(delta_n);
 
         println!("Sorting {} ≈ {:.0e} new paths...", nfound, nfound);
-        next.sort();            // <-- the plurality of our time is spent here
+        next.sort_unstable(); // <-- the plurality of our time is spent here
         println!("Sorted, now deduplicating...");
         next.dedup();      // is this slow?
         println!("Deduplicated to {} paths, now minifying...", next.len());
