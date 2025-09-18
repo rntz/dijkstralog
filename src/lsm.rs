@@ -22,12 +22,17 @@ pub const MAX_LEVELS: usize = 48;
 pub struct Pair<K, V> { pub key: K, pub value: V, }
 pub type Key<K> = Pair<K, ()>;
 
-impl<K, V> From<Pair<K, V>> for (K, V) { fn from(pair: Pair<K, V>) -> (K, V) { (pair.key, pair.value) } }
-impl<K, V> From<(K, V)> for Pair<K, V> { fn from((key, value): (K,V)) -> Pair<K, V> { Pair { key, value } } }
+impl<K, V> From<Pair<K, V>> for (K, V) {
+    fn from(pair: Pair<K, V>) -> (K, V) { (pair.key, pair.value) }
+}
+impl<K, V, U: Into<V>> From<(K, U)> for Pair<K, V> {
+    fn from((key, value): (K,U)) -> Pair<K, V> { Pair { key, value: value.into() } }
+}
 impl<K> From<K> for Pair<K, ()> { fn from(key: K) -> Pair<K, ()> { Pair { key, value: () } } }
 
 // A sorted, de-duplicated list.
 // TODO: rename this "Sorted"?
+#[derive(Clone)]
 pub struct Layer<A> {
     // DataToad uses <Fact as Columnar>::Container here instead of just
     // Vec<Fact>. How important is this?
@@ -234,24 +239,21 @@ impl<K, V> LSM<Pair<K, V>> where
         self.debug_dump("  ");
     }
 
-    // Merges all layers into one.
+    // Merges all layers into one. This could probably be more efficient by doing an n-way
+    // merge instead of repeated binary merges.
     pub fn into_layer(mut self) -> Layer<Pair<K, V>> {
         let mut layer = match self.layers.pop() {
             None => return Layer::new(),
             Some(x) => x
         };
-        while let Some(next) = self.layers.pop() {
-            layer = layer.merge(next);
-        }
+        while let Some(next) = self.layers.pop() { layer = layer.merge(next); }
         return layer;
     }
 
     // Compresses LSM down to one layer. Can be useful to speed up future accesses.
     pub fn compress(&mut self) {
         let mut layer = match self.layers.pop() { None => return, Some(x) => x };
-        while let Some(next) = self.layers.pop() {
-            layer = layer.merge(next);
-        }
+        while let Some(next) = self.layers.pop() { layer = layer.merge(next); }
         self.layers.push(layer);
     }
 }
