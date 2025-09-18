@@ -10,7 +10,7 @@ use dijkstralog::lsm::{LSM, Layer, Key};
 
 // Takes ≤ 3s on my Macbook M1 Pro.
 // Set EDGES environment variable to override; EDGES=all for no limit.
-const DEFAULT_MAX_EDGES: usize = 110_000;
+const DEFAULT_MAX_EDGES: usize = 250_000;
 
 macro_rules! print_flush {
     ($($e:tt)*) => { { print!($($e)*); std::io::stdout().flush().unwrap() } }
