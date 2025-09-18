@@ -1,23 +1,8 @@
-// DIFF FROM TRANS.RS
+// DIFF FROM TRANS2.RS
 //
-// We do a projection, Q(a,c) <- ∃b. Δtrans(a,b) edge(b,c). The rhs generates (a,b,c)
-// tuples in sorted order. Projecting away b means the (a,c) tuples are not sorted.
-// However, they're still sorted by `a`, just each `a`-chunk needs sorting. In trans.rs we
-// do this either by sorting the entire results, or a post-processing step that identifies
-// the `a`-chunks by searching for them.
-//
-// Here, we sort each chunk as we generate it, during the projection step, taking
-// advantage of our variable-at-a-time nested loops.
-//
-// HOWEVER, this is harder to parallelize! If I just replace these smaller sorts with
-// Rayon's par_sort_unstable, I get less speedup than doing the same in trans.rs, because
-// I've *sequentialized* all these little sorts. As a result, parallelizing trans.rs is
-// often faster than parallel trans2.rs (on my Macbook M1 Pro).
-
-// Use eg the SNAP soc-LiveJournal1.txt data set:
-// https://snap.stanford.edu/data/soc-LiveJournal1.html
-// https://snap.stanford.edu/data/soc-LiveJournal1.txt.gz
-// total edges in soc-LiveJournal1.txt: 68,993,773
+// This file follows trans2.rs (see there for diff from trans.rs) but also parallelizes
+// the entire inner loop by partitioning the delta up to N=32 ways using Rayon's parallel
+// iterators. (Future work: don't hard-code the degree of parallelism.)
 
 use std::io::prelude::*;
 
