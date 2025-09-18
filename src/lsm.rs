@@ -90,6 +90,10 @@ impl<K: Copy + Ord, V> Layer<Pair<K, V>> {
         return Layer { elems: results }
     }
 
+    // TODO: a parallel implementation of merge using Rayon. should take argument for
+    // number of grains to parallelize across. Recursively split smaller chunk at median,
+    // x, and partitioning larger on x. Once they get small enough or we exhaust recursion
+    // depth, bail out to in-order merge.
     pub fn merge(self, other: Layer<Pair<K, V>>) -> Self
     where V: Add
     {
