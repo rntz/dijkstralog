@@ -13,7 +13,6 @@ use std::io::prelude::*;
 use dijkstralog::iter::{Seek, ranges, tuples};
 use dijkstralog::lsm::{LSM, Layer, Key};
 
-// Takes ≤ 3s on my Macbook M1 Pro.
 // Set EDGES environment variable to override; EDGES=all for no limit.
 const DEFAULT_MAX_EDGES: usize = 250_000;
 

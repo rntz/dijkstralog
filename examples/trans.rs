@@ -1,14 +1,11 @@
-// Use eg the SNAP soc-LiveJournal1.txt data set:
-// https://snap.stanford.edu/data/soc-LiveJournal1.html
-// https://snap.stanford.edu/data/soc-LiveJournal1.txt.gz
-// total edges in soc-LiveJournal1.txt: 68,993,773
+// Works with various SNAP datasets, eg wiki-Vote.txt or soc-LiveJournal1.txt.
+// https://snap.stanford.edu/data/index.html
 
 use std::io::prelude::*;
 
 use dijkstralog::iter::{Seek, ranges, tuples};
 use dijkstralog::lsm::{LSM, Layer, Key};
 
-// Takes ≤ 3s on my Macbook M1 Pro.
 // Set EDGES environment variable to override; EDGES=all for no limit.
 const DEFAULT_MAX_EDGES: usize = 250_000;
 
