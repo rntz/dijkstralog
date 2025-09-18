@@ -148,12 +148,16 @@ fn main() {
                 // more efficient than doing one big sort at the end.
                 new_paths[i..].sort_unstable_by_key(|x| x.key.1);
             }
+            // For semiring semantics, would need to make this aggregate.
+            new_paths.dedup();
             return new_paths;
         };
 
         // How many ways do we want to parallelize?
         let delta = delta_trans.as_slice();
         let ndelta = delta.len();
+        // Over-parallelize to reduce impact of "chunkiness" (uneven amounts of
+        // work per partition).
         let max_splits: usize = 32;
 
         let mut partitions: Vec<(usize, usize)> = Vec::new();
@@ -171,65 +175,46 @@ fn main() {
         partitions.push((start, ndelta));
         println!("partitioned {} delta tuples into {} buckets:\n  {:?}",
                  ndelta, partitions.len(), &partitions);
-        let new_path_vecs: Vec<Vec<_>> = partitions
+        let new_paths: Vec<Vec<_>> = partitions
             .into_par_iter()
             .map(|(start, end)| do_things(&delta[start..end]))
             .collect();
 
-        println!("Concatenating results...");
-        let n_extra = new_path_vecs[1..].iter().map(|v| v.len()).sum();
-        let mut new_path_vecs = new_path_vecs.into_iter();
-        let mut new_paths = new_path_vecs.next().unwrap();
-        new_paths.reserve_exact(n_extra);
-        for more_paths in new_path_vecs {
-            new_paths.extend(more_paths);
-        }
-
-        // // Use the `a` value from the median of the delta as a split point.
-        // let delta = delta_trans.as_slice();
-        // let median_a = delta[delta.len() / 2].key.0;
-        // let median_index = delta.partition_point(|row| row.key.0 < median_a);
-        // let delta_0 = &delta[..median_index];
-        // let delta_1 = &delta[median_index..];
-        // assert!(delta_0.is_empty() || delta_1.is_empty() ||
-        //         delta_0[delta_0.len()-1].key.0 != delta_1[0].key.0);
-
-        // // PARALLELISM TIME!
-        // let (mut new_paths, new_paths_1) = rayon::join(|| do_things(delta_0),
-        //                                                || do_things(delta_1));
-        // new_paths.extend(new_paths_1);
-
-        let npaths = new_paths.len();
-        println!("found {} ≈ {:.0e} potential paths.", npaths, npaths);
-        debug_assert!(new_paths.is_sorted_by_key(|x| x.key));
+        let n_pre_minify: usize = new_paths.iter().map(|v| v.len()).sum();
+        println!("found {} ≈ {:.0e} potential paths.", n_pre_minify, n_pre_minify);
 
         // --  UPDATE TRANS:  trans' = trans + Δtrans
         trans.push(delta_trans);
         // This^ consumes delta_trans! implications for evaluation order of full
         // Datalog system?
 
-        println!("Deduplicating and minifying...");
-        let mut trans_seek = trans.seeker();
-        let mut prev = None;
-        let n_pre = new_paths.len();
-        let mut n_dup: usize = 0;
-        // TODO: THIS SEQUENTIAL BOTTLENECK IS HOLDING US BACK!
-        new_paths.retain(|ac| {
-            // For semiring semantics... I'm not sure what we'd do here.
-            if prev.is_some_and(|x| x == ac.key) { n_dup += 1; return false }
-            prev = Some(ac.key);
-            // For semiring semantics, here we'd use a minifying operator followed by an
-            // is_zero test.
-            return trans_seek.seek_to(ac.key).is_none()
-        });
-        let n_post = new_paths.len();
-        let n_known = n_pre - n_post - n_dup;
+        // Parallel minification. It would be good to fuse this with the generation of
+        // new_paths, but we can't because we don't have a persistent way of updating an
+        // LSM yet. Need Rc<> on each layer or similar so different LSMs can share Layers.
+        println!("Minifying...");
+        let new_paths: Vec<Vec<_>> = new_paths.into_par_iter().map(|mut new_paths| {
+            let mut trans_seek = trans.seeker();
+            new_paths.retain(|ac| {
+                // For semiring semantics, here we'd use a minifying operator followed by
+                // an is_zero test.
+                return trans_seek.seek_to(ac.key).is_none()
+            });
+            new_paths
+        }).collect();
+        let n_post_minify: usize = new_paths.iter().map(|v| v.len()).sum();
         println!(
-            "Minified {n_pre:.1e} → {n_post:.1e}, new {:.0}%, dups {:.0}%, known {:.0}%",
-            100.0 * (n_post as f32 / n_pre as f32),
-            100.0 * (n_dup as f32 / n_pre as f32),
-            100.0 * (n_known as f32 / n_pre as f32),
+            "Minified {n_pre_minify:.1e} → {n_post_minify:.1e}, new {:.0}%",
+            100.0 * (n_post_minify as f32 / n_pre_minify as f32),
         );
+
+        println!("Concatenating...");
+        let n_extra = new_paths[1..].iter().map(|v| v.len()).sum();
+        let mut new_path_vecs = new_paths.into_iter();
+        let mut new_paths = new_path_vecs.next().unwrap();
+        new_paths.reserve_exact(n_extra);
+        for more_paths in new_path_vecs {
+            new_paths.extend(more_paths);
+        }
 
         delta_trans = Layer::from_sorted(new_paths);
     }
