@@ -24,7 +24,7 @@ fn load_edges() -> Vec<(u32, u32)> {
     // TODO: use first std::env::args as data file if present
     use std::fs::File;
     use std::path::Path;
-    //let path = Path::new("data/wiki-Vote.txt");
+    // let path = Path::new("data/wiki-Vote.txt");
     let path = Path::new("data/email-Enron.txt");
     // let path = Path::new("data/soc-Epinions1.txt");
     // let path = Path::new("data/soc-LiveJournal1.txt");
@@ -104,6 +104,8 @@ fn main() {
         edges.iter().map(|&kv| kv.into()).collect()
     );
 
+    let mut total_concatenate_ns: u128 = 0;
+
     let mut itercount = 0;
     while !delta_trans.is_empty() {
         itercount += 1;
@@ -114,7 +116,7 @@ fn main() {
         println!("      delta_trans: {ndelta:>10} ≈ {ndelta:3.0e}");
 
         // -- COMPUTE DELTA:  Δtrans' a c = Δtrans a b * edge b c
-        print_flush!("Delta rules ");
+        println!("Delta rules...");
 
         // Works on a chunk of the delta.
         let do_things = |delta: &[Key<(u32, u32)>]| {
@@ -141,9 +143,36 @@ fn main() {
         // How many ways do we want to parallelize?
         let delta = delta_trans.as_slice();
         let ndelta = delta.len();
-        // Over-parallelize to reduce impact of "chunkiness" (uneven amounts of
-        // work per partition).
-        let max_splits: usize = 32;
+
+        // ---------- USE sqrt(ndelta) ----------
+        // sqrt() seems to work well but I don't know why it should.
+        let max_splits = (ndelta as f64).sqrt() as usize;
+
+        // // ---------- USE A MAGIC CONSTANT ----------
+        // // Over-parallelize to reduce impact of "chunkiness" (uneven amounts of work per
+        // // partition). But don't try to partition into chunks less than 10k (somewhat
+        // // arbitrarily chosen).
+        // let max_splits: usize = 128;
+
+        // ---------- USE min(const1, ndelta / const2) ----------
+        // // measured with the .min() below disabled.
+        // // TOO BIG:     1_000_000   8s
+        // // TOO BIG?:    100_000     7.310
+        // // GOOD?:       10_000      7.089?! 7.223 more reasonable
+        // // TOO SMALL??: 1_000       7.337+
+        // let max_splits: usize = 10_000;
+
+        // // measured with max_splits = 1_000_000 above:
+        // // TOO BIG?:    ndelta / 10
+        // // GOOD:        ndelta / 100        7.261
+        // // GOOD:        ndelta / 1_000      7.126
+        // // GOOD:        ndelta / 10_000     7.223
+        // // TOO SMALL:   ndelta / 100_000
+        // let max_splits2 = ndelta / 1000;
+        // if max_splits2 < max_splits {
+        //     println!("\n  LIMITED BY max_splits2: {max_splits2}");
+        // }
+        // let max_splits = max_splits.min(max_splits2);
 
         let mut partitions: Vec<(usize, usize)> = Vec::new();
         let mut start = 0;
@@ -157,9 +186,13 @@ fn main() {
             start = end;
             prev_a = a;
         }
-        partitions.push((start, ndelta));
-        println!("partitioned {} delta tuples into {} buckets:\n  {:?}",
-                 ndelta, partitions.len(), &partitions);
+        if start != ndelta { partitions.push((start, ndelta)); }
+        println!(
+            "partitioned {ndelta} ≈ {ndelta:.0e} delta tuples into {} buckets of sizes {}–{}",
+            partitions.len(),
+            partitions.iter().map(|(start, end)| end - start).min().unwrap(),
+            partitions.iter().map(|(start, end)| end - start).max().unwrap(),
+        );
         let new_paths: Vec<Vec<_>> = partitions
             .into_par_iter()
             .map(|(start, end)| do_things(&delta[start..end]))
@@ -192,7 +225,9 @@ fn main() {
             100.0 * (n_post_minify as f32 / n_pre_minify as f32),
         );
 
-        println!("Concatenating...");
+        use std::time::Instant;
+        let concatenate = Instant::now();
+        print_flush!("Concatenating...");
         let n_extra = new_paths[1..].iter().map(|v| v.len()).sum();
         let mut new_path_vecs = new_paths.into_iter();
         let mut new_paths = new_path_vecs.next().unwrap();
@@ -200,6 +235,9 @@ fn main() {
         for more_paths in new_path_vecs {
             new_paths.extend(more_paths);
         }
+        let concatenate = concatenate.elapsed();
+        total_concatenate_ns += concatenate.as_nanos();
+        println!("took {:.2}s", concatenate.as_secs_f32());
 
         delta_trans = Layer::from_sorted(new_paths);
     }
@@ -210,6 +248,9 @@ fn main() {
     let size = trans.layers().map(|l| l.len()).sum::<usize>();
     println!("Fixed point reached. {} ≈ {:.0e} paths in LSM:", size, size);
     trans.debug_dump(" ");
+
+    println!("concatenation took {}ms total",
+             total_concatenate_ns / 1_000_000);
 
     // print_flush!("Counting distinct paths... ");
     // let npaths = trans.iter().count();
