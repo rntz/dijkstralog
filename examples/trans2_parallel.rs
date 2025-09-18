@@ -1,8 +1,7 @@
 // DIFF FROM TRANS2.RS
 //
 // This file follows trans2.rs (see there for diff from trans.rs) but also parallelizes
-// the entire inner loop by partitioning the delta up to N=32 ways using Rayon's parallel
-// iterators. (Future work: don't hard-code the degree of parallelism.)
+// the entire inner loop by partitioning the delta using Rayon's parallel iterators.
 
 use std::io::prelude::*;
 
@@ -25,6 +24,8 @@ fn load_edges() -> Vec<(u32, u32)> {
     use std::fs::File;
     use std::path::Path;
     // let path = Path::new("data/wiki-Vote.txt");
+    // let path = Path::new("data/ca-HepPh.txt");
+    // let path = Path::new("data/cit-HepTh.txt");
     let path = Path::new("data/email-Enron.txt");
     // let path = Path::new("data/soc-Epinions1.txt");
     // let path = Path::new("data/soc-LiveJournal1.txt");
@@ -100,26 +101,25 @@ fn main() {
     //  trans (i+1)     = trans i + Δtrans i
 
     let mut trans: LSM<Key<(u32, u32)>> = LSM::new();
-    let mut delta_trans: Layer<Key<(u32, u32)>> = Layer::from_sorted(
+    let mut delta: Layer<Key<(u32, u32)>> = Layer::from_sorted(
         edges.iter().map(|&kv| kv.into()).collect()
     );
 
     let mut total_concatenate_ns: u128 = 0;
+    let mut total_lsm_update_ns: u128 = 0;
 
     let mut itercount = 0;
-    while !delta_trans.is_empty() {
+    while !delta.is_empty() {
         itercount += 1;
         println!("\n-- iter {itercount} --");
         let ntrans = trans.layers().map(|l| l.len()).sum::<usize>();
-        let ndelta = delta_trans.len();
-        println!("trans (overcount): {ntrans:>10} ≈ {ntrans:3.0e}");
-        println!("      delta_trans: {ndelta:>10} ≈ {ndelta:3.0e}");
+        let ndelta = delta.len();
+        println!("trans: {ntrans:>10} ≈ {ntrans:3.0e} (overcount unless deltas minified)");
+        println!("delta: {ndelta:>10} ≈ {ndelta:3.0e}");
 
         // -- COMPUTE DELTA:  Δtrans' a c = Δtrans a b * edge b c
-        println!("Delta rules...");
-
         // Works on a chunk of the delta.
-        let do_things = |delta: &[Key<(u32, u32)>]| {
+        let process_deltas = |delta: &[Key<(u32, u32)>]| {
             let mut new_paths: Vec<Key<(u32, u32)>> = Vec::new();
             for (a, delta_a) in ranges(delta, |x| x.key.0).iter() {
                 let i = new_paths.len();
@@ -141,75 +141,61 @@ fn main() {
         };
 
         // How many ways do we want to parallelize?
-        let delta = delta_trans.as_slice();
-        let ndelta = delta.len();
-
-        // ---------- USE sqrt(ndelta) ----------
         // sqrt() seems to work well but I don't know why it should.
-        let max_splits = (ndelta as f64).sqrt() as usize;
-
-        // // ---------- USE A MAGIC CONSTANT ----------
-        // // Over-parallelize to reduce impact of "chunkiness" (uneven amounts of work per
-        // // partition). But don't try to partition into chunks less than 10k (somewhat
-        // // arbitrarily chosen).
-        // let max_splits: usize = 128;
-
-        // ---------- USE min(const1, ndelta / const2) ----------
-        // // measured with the .min() below disabled.
-        // // TOO BIG:     1_000_000   8s
-        // // TOO BIG?:    100_000     7.310
-        // // GOOD?:       10_000      7.089?! 7.223 more reasonable
-        // // TOO SMALL??: 1_000       7.337+
-        // let max_splits: usize = 10_000;
-
-        // // measured with max_splits = 1_000_000 above:
-        // // TOO BIG?:    ndelta / 10
-        // // GOOD:        ndelta / 100        7.261
-        // // GOOD:        ndelta / 1_000      7.126
-        // // GOOD:        ndelta / 10_000     7.223
-        // // TOO SMALL:   ndelta / 100_000
-        // let max_splits2 = ndelta / 1000;
-        // if max_splits2 < max_splits {
-        //     println!("\n  LIMITED BY max_splits2: {max_splits2}");
-        // }
-        // let max_splits = max_splits.min(max_splits2);
-
+        let max_buckets = 64
+            .min(ndelta)
+            .max((ndelta as f64).sqrt() as usize);
         let mut partitions: Vec<(usize, usize)> = Vec::new();
         let mut start = 0;
-        let mut prev_a = delta_trans[0].key.0;
-        for i in 0..max_splits {
-            let a = delta[i * (ndelta / max_splits)].key.0;
+        let mut prev_a = delta[0].key.0;
+        for i in 1..max_buckets {
+            // TODO: danger of overflow here in (i * delta)? use floating point?
+            let idx = i * (ndelta / max_buckets);
+            let a = delta[idx].key.0;
             if a == prev_a { continue }
-            let end = delta.partition_point(|row| row.key.0 <= a);
-            assert!(start != end);
+            let end = delta.partition_point(|row| row.key.0 < a);
+            debug_assert!(start != end);
             partitions.push((start, end));
             start = end;
             prev_a = a;
         }
         if start != ndelta { partitions.push((start, ndelta)); }
-        println!(
-            "partitioned {ndelta} ≈ {ndelta:.0e} delta tuples into {} buckets of sizes {}–{}",
-            partitions.len(),
-            partitions.iter().map(|(start, end)| end - start).min().unwrap(),
-            partitions.iter().map(|(start, end)| end - start).max().unwrap(),
-        );
+
+        // Print some stats on the partitioning.
+        let buckets = partitions.len();
+        if buckets == 1 {
+            println!("Partitioned {ndelta} ≈ {ndelta:.0e} delta tuples into 1 bucket (aimed for ≤ {max_buckets}).");
+        } else {
+            println!("Partitioned {ndelta} ≈ {ndelta:.0e} delta tuples into {buckets} buckets (aimed for ≤ {max_buckets}).");
+            let mut sizes: Vec<usize> =
+                partitions.iter().map(|(start, end)| end - start).collect();
+            sizes.sort();
+            let min = sizes[0]; let max = sizes[buckets-1];
+            let p25 = sizes[buckets/4]; let p75 = sizes[buckets - (buckets/4).max(1)];
+            let mean = (sizes.iter().sum::<usize>() as f32 / buckets as f32).round() as usize;
+            println!("  min {min}  middle {p25}–{p75}  mean {mean:.0}  max {max}");
+        }
+
+        print_flush!("Delta rules ");
         let new_paths: Vec<Vec<_>> = partitions
             .into_par_iter()
-            .map(|(start, end)| do_things(&delta[start..end]))
+            .map(|(start, end)| process_deltas(&delta[start..end]))
             .collect();
 
         let n_pre_minify: usize = new_paths.iter().map(|v| v.len()).sum();
         println!("found {} ≈ {:.0e} potential paths.", n_pre_minify, n_pre_minify);
 
         // --  UPDATE TRANS:  trans' = trans + Δtrans
-        trans.push(delta_trans);
-        // This^ consumes delta_trans! implications for evaluation order of full
+        let lsm_update = Instant::now();
+        trans.push(delta);
+        // This^ consumes delta! implications for evaluation order of full
         // Datalog system?
+        total_lsm_update_ns += lsm_update.elapsed().as_nanos();
 
         // Parallel minification. It would be good to fuse this with the generation of
         // new_paths, but we can't because we don't have a persistent way of updating an
         // LSM yet. Need Rc<> on each layer or similar so different LSMs can share Layers.
-        println!("Minifying...");
+        print_flush!("Minifying {n_pre_minify:.1e} → ");
         let new_paths: Vec<Vec<_>> = new_paths.into_par_iter().map(|mut new_paths| {
             let mut trans_seek = trans.seeker();
             new_paths.retain(|ac| {
@@ -221,13 +207,13 @@ fn main() {
         }).collect();
         let n_post_minify: usize = new_paths.iter().map(|v| v.len()).sum();
         println!(
-            "Minified {n_pre_minify:.1e} → {n_post_minify:.1e}, new {:.0}%",
+            "{n_post_minify:.1e}, new {:.0}%",
             100.0 * (n_post_minify as f32 / n_pre_minify as f32),
         );
 
         use std::time::Instant;
         let concatenate = Instant::now();
-        print_flush!("Concatenating...");
+        print_flush!("Concatenating ");
         let n_extra = new_paths[1..].iter().map(|v| v.len()).sum();
         let mut new_path_vecs = new_paths.into_iter();
         let mut new_paths = new_path_vecs.next().unwrap();
@@ -239,7 +225,7 @@ fn main() {
         total_concatenate_ns += concatenate.as_nanos();
         println!("took {:.2}s", concatenate.as_secs_f32());
 
-        delta_trans = Layer::from_sorted(new_paths);
+        delta = Layer::from_sorted(new_paths);
     }
 
     println!();
@@ -249,8 +235,8 @@ fn main() {
     println!("Fixed point reached. {} ≈ {:.0e} paths in LSM:", size, size);
     trans.debug_dump(" ");
 
-    println!("concatenation took {}ms total",
-             total_concatenate_ns / 1_000_000);
+    println!("concatenation took {:5}ms total", total_concatenate_ns / 1_000_000);
+    println!("   lsm update took {:5}ms total", total_lsm_update_ns / 1_000_000);
 
     // print_flush!("Counting distinct paths... ");
     // let npaths = trans.iter().count();

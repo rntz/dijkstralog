@@ -21,6 +21,7 @@ fn load_edges() -> Vec<(u32, u32)> {
     use std::fs::File;
     use std::path::Path;
     // let path = Path::new("data/wiki-Vote.txt");
+    // let path = Path::new("data/ca-HepPh.txt");
     let path = Path::new("data/email-Enron.txt");
     // let path = Path::new("data/soc-LiveJournal1.txt");
     let file = File::open(&path).expect("couldn't open file");
