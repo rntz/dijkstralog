@@ -13,23 +13,20 @@ use dijkstralog::lsm::{LSM, Layer, Key};
 
 // Set EDGES environment variable to override; EDGES=all for no limit.
 const DEFAULT_MAX_EDGES: usize = 250_000;
+const DEFAULT_FILE: &str = "data/ca-HepPh.txt";
 
 macro_rules! print_flush {
     ($($e:tt)*) => { { print!($($e)*); std::io::stdout().flush().unwrap() } }
 }
 
 fn load_edges() -> Vec<(u32, u32)> {
-    // TODO: use first std::env::args as data file if present
+    use std::ffi::OsString;
     use std::fs::File;
-    use std::path::Path;
-    // let path = Path::new("data/wiki-Vote.txt");
-    let path = Path::new("data/ca-HepPh.txt");
-    // let path = Path::new("data/cit-HepTh.txt");
-    // let path = Path::new("data/email-Enron.txt");
-    // let path = Path::new("data/soc-Epinions1.txt");
-    // let path = Path::new("data/soc-LiveJournal1.txt");
-    let file = File::open(&path).expect("couldn't open file");
     use std::env::{var, VarError};
+    let args = std::env::args_os();
+    let path: OsString = args.skip(1).next().unwrap_or(DEFAULT_FILE.into());
+    let file = File::open(&path).expect("couldn't open file");
+    println!("Reading from {:?}", path);
     let max_edges: Option<usize> = match var("EDGES") {
         Err(VarError::NotPresent) => Some(DEFAULT_MAX_EDGES), // default
         Err(VarError::NotUnicode(_)) => panic!("EDGES not valid unicode"),
