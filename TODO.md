@@ -5,7 +5,7 @@
 
 # 1. Parallel splitting
 
-trans2_parallel.rs nets a big speedup from parallelism by partitioning the delta and processing each partition in parallel.
+`trans2_parallel.rs` nets a big speedup from parallelism by partitioning the delta and processing each partition in parallel.
 
 It's obvious how to split a single relation. But how do we "partition" an inner join? Here's one obvious way (based on [Baeza-Yates intersection][baeza-yates] [1]): split the smallest relation in half, finding its median `x`, and partition each other relation on `x`. If more parallelism is desired, recursively partition each half, and so on.
 
