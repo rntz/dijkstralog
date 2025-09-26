@@ -29,14 +29,16 @@ use dijkstralog::iter::{Seek, ranges, tuples, Bound};
 // total edges in soc-LiveJournal1.txt: 68,993,773
 // 20M edges takes ~8-9s on my Macbook M1 Pro
 const DEFAULT_MAX_EDGES: usize = 20_000_000;
+const DEFAULT_FILE: &str = "data/soc-LiveJournal1.txt";
 
 fn load_edges() -> Vec<(u32, u32)> {
-    // TODO: use first std::env::args as data file if present
+    use std::ffi::OsString;
     use std::fs::File;
-    use std::path::Path;
-    let path = Path::new("data/soc-LiveJournal1.txt");
-    let file = File::open(&path).expect("couldn't open soc-LiveJournal1.txt");
     use std::env::{var, VarError};
+    let args = std::env::args_os();
+    let path: OsString = args.skip(1).next().unwrap_or(DEFAULT_FILE.into());
+    let file = File::open(&path).expect("couldn't open file");
+    println!("Reading from {:?}", path);
     let max_edges: Option<usize> = match var("EDGES") {
         Err(VarError::NotPresent) => Some(DEFAULT_MAX_EDGES), // default
         Err(VarError::NotUnicode(_)) => panic!("EDGES not valid unicode"),
