@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 // ---------- SEEKABLE ITERATORS AND THEIR POSITIONS ----------
 // Positions of an iterator:
 // Yield(k, Some(v)) = we found a key-value pair (k, v)
@@ -21,7 +22,7 @@ trait Seek {
     //    Yield(k, Some(v)) => (k,v) is the least pair such that test(k) is true.
     //    Yield(k, None)    => test(k) is true, but further calls to seek() may be
     //                         needed to actually find the next key-value pair.
-    fn seek<F: FnMut(&Self::Key) -> bool>(&mut self, test: F) -> Position<Self>;
+    fn seek<F: FnMut(Self::Key) -> bool>(&mut self, test: F) -> Position<Self>;
 
     // inner join, or intersection on keys, of two seekable iterators.
     fn join<T: Seek>(self, other: T) -> Join<Self, T> where Self: Sized {
@@ -34,6 +35,37 @@ trait Seek {
         let posn = self.seek(|_| true);
         Keys { iter: self, posn }
     }
+
+    // Manually drives the underlying iterator instead of using Keys().
+    // Slightly faster than .keys().count()
+    fn count(mut self) -> usize where Self: Sized {
+        let mut count = 0;
+        // self.for_each(|| { count += 1 });
+        // return count;
+        // ↑↑↑↑ The above SHOULD be just as fast as the below after inlining.
+        //      After all, if I manually inline, it's identical!
+        //      Yet it's slower. WHY???
+        let mut posn = self.seek(|_| true);
+        loop {
+            match posn {
+                Empty => return count,
+                Yield(k, None) => { posn = self.seek(|x| x >= k); }
+                Yield(k, Some(_)) => { posn = self.seek(|x| x > k); count += 1; }
+            }
+        }
+    }
+
+    // #[inline(always)]
+    // fn for_each<F: FnMut()>(mut self, mut f: F) where Self: Sized {
+    //     let mut posn = self.seek(|_| true);
+    //     loop {
+    //         match posn {
+    //             Empty => break,
+    //             Yield(k, None) => { posn = self.seek(|x| x >= k); }
+    //             Yield(k, Some(_)) => { posn = self.seek(|x| x > k); f(); }
+    //         }
+    //     }
+    // }
 }
 
 // ---------- INTERSECTION ("inner join") OF SEEKABLE ITERATORS ----------
@@ -43,9 +75,9 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
     type Key   = X::Key;
     type Value = (X::Value, Y::Value);
 
-    fn seek<F: FnMut(&Self::Key) -> bool>(&mut self, test: F) -> Position<Self> {
+    fn seek<F: FnMut(Self::Key) -> bool>(&mut self, test: F) -> Position<Self> {
         let Yield(k0, r0) = self.0.seek(test) else { return Empty };
-        let Yield(k1, r1) = self.1.seek(|k| *k >= k0) else { return Empty };
+        let Yield(k1, r1) = self.1.seek(|k| k >= k0) else { return Empty };
         if k0 == k1 { // We've found a key present in both iterators!
             Yield(k1, r0.and_then(|v0| r1.and_then(|v1| Some((v0,v1)))))
         } else {      // Not yet, keep looking.
@@ -62,13 +94,13 @@ impl<S: Seek> Iterator for Keys<S> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut posn = match self.posn {
             Empty => return None,
-            Yield(k, Some(_)) => { self.posn = self.iter.seek(|x| *x > k); return Some(k); }
-            Yield(k, None) => self.iter.seek(|x| *x >= k),
+            Yield(k, Some(_)) => { self.posn = self.iter.seek(|x| x > k); return Some(k); }
+            Yield(k, None) => self.iter.seek(|x| x >= k),
         };
         loop { posn = match posn {
             Empty => { self.posn = Empty; return None; }
-            Yield(k, Some(_)) => { self.posn = self.iter.seek(|x| *x > k); return Some(k); }
-            Yield(k, None) => self.iter.seek(|x| *x >= k),
+            Yield(k, Some(_)) => { self.posn = self.iter.seek(|x| x > k); return Some(k); }
+            Yield(k, None) => self.iter.seek(|x| x >= k),
         } }
     }
 }
@@ -87,7 +119,7 @@ impl<'a, X: Ord + Copy> Seek for Elements<'a, X> {
     type Key = X;
     type Value = ();
 
-    fn seek<F: FnMut(&Self::Key) -> bool>(&mut self, test: F) -> Position<Self> {
+    fn seek<F: FnMut(Self::Key) -> bool>(&mut self, test: F) -> Position<Self> {
         self.index += gallop(&self.elems[self.index..], test);
         if self.index >= self.elems.len() { Empty }
         else { Yield(self.elems[self.index], Some(())) }
@@ -96,18 +128,18 @@ impl<'a, X: Ord + Copy> Seek for Elements<'a, X> {
 
 // Galloping search (exponential probing followed by binary search), based on DataFrog's gallop(),
 // https://github.com/rust-lang/datafrog/blob/07bf407c740db506a56bcb4af3eb474eb83ca815/src/join.rs#L137
-fn gallop<X, F: FnMut(&X) -> bool>(elems: &[X], mut test: F) -> usize {
+fn gallop<X: Copy, F: FnMut(X) -> bool>(elems: &[X], mut test: F) -> usize {
     let n = elems.len();
-    if n == 0 || test(&elems[0]) { return 0 }
+    if n == 0 || test(elems[0]) { return 0 }
     let mut lo = 0;
     let mut step = 1;
-    while step < n - lo && !test(&elems[lo + step]) { // exponential probing phase
+    while step < n - lo && !test(elems[lo + step]) { // exponential probing phase
         lo += step;
         step <<= 1;
     }
     step >>= 1;
     while step > 0 {                                 // binary search phase
-        if step < n - lo && !test(&elems[lo + step]) {
+        if step < n - lo && !test(elems[lo + step]) {
             lo += step;
         }
         step >>= 1;
@@ -143,20 +175,98 @@ fn count_intersection(xs: &[u32], ys: &[u32]) -> usize {
 
     loop {
         // Leapfrog ys past xs.
-        j += gallop(&ys[j..], |y| x <= *y);
+        j += gallop(&ys[j..], |y| x <= y);
         if j >= yn { break }
         let y = ys[j];
         if x == y { count += 1; }
-        i += 1;
+        i += 1;                 // bump xs
 
         // Leapfrog xs past ys.
-        i += gallop(&xs[i..], |x| y <= *x);
+        i += gallop(&xs[i..], |x| y <= x);
         if i >= xn { break }
         x = xs[i];
         if x == y { count += 1; }
         j += 1;
     }
 
+    return count;
+}
+
+// // Hand-optimized intersection, maybe????
+// fn count_intersection_3way(xs: &[u32], ys: &[u32], zs: &[u32]) -> usize {
+//     let xn = xs.len();
+//     if xn == 0 { return 0 }
+//     let yn = ys.len();
+//     let zn = zs.len();
+
+//     let mut count = 0;
+//     let mut i = 0;
+//     let mut j = 0;
+//     let mut k = 0;
+//     let mut x = xs[0];
+//     let mut y = ys[0];
+//     let mut z = zs[0];
+
+//     loop {
+//         // Leapfrog ys past xs.
+//         j += gallop(&ys[j..], |y| x <= y);
+//         if j >= yn { break }
+//         y = ys[j];
+//         if x == y && y == z { count += 1; }
+//         i += 1;                 // why is this correct? I don't think it is!
+
+//         // Leapfrog zs past ys.
+//         k += gallop(&zs[k..], |z| y <= z);
+//         if k >= zn { break }
+//         z = zs[k];
+//         if x == y && y == z { count += 1; }
+//         j += 1;
+
+//         // Leapfrog xs past zs.
+//         i += gallop(&xs[i..], |x| z <= x);
+//         if i >= xn { break }
+//         x = xs[i];
+//         if x == y && y == z { count += 1; }
+//         k += 1;
+//     }
+
+//     return count;
+// }
+
+// Manually driving the underlying Seek iterator instead of using Keys().
+// Slightly faster (x1.085).
+fn count_intersection2(xs: &[u32], ys: &[u32]) -> usize {
+    let mut count = 0;
+    let mut iter = elements(xs).join(elements(ys));
+    let mut posn: Position<Join<Elements<u32>, Elements<u32>>>
+        = iter.seek(|_| true);
+    loop {
+        match posn {
+            Empty => return count,
+            Yield(k, None) => { posn = iter.seek(|x| x >= k); }
+            Yield(k, Some(_)) => { posn = iter.seek(|x| x > k); count += 1; }
+        }
+    }
+}
+
+fn count_intersection3(xs: &[u32], ys: &[u32]) -> usize {
+    let mut count = 0;
+    let mut xs_iter = elements(xs);
+    let mut ys_iter = elements(ys);
+    let Yield(mut kx, mut rx) = xs_iter.seek(|_| true) else { return 0 };
+    let Yield(mut ky, mut ry) = ys_iter.seek(|k| k >= kx) else { return 0 };
+    loop {
+        if kx == ky && rx.is_some() && ry.is_some() {
+            count += 1;
+            let Yield(kx_new, rx_new) = xs_iter.seek(|k| k > ky) else { break };
+            kx = kx_new; rx = rx_new;
+        } else {
+            let Yield(kx_new, rx_new) = xs_iter.seek(|k| k >= ky) else { break };
+            kx = kx_new; rx = rx_new;
+        }
+        let Yield(ky_new, ry_new) = ys_iter.seek(|k| k >= kx) else { break };
+        ky = ky_new; ry = ry_new;
+    }
     return count;
 }
 
@@ -190,7 +300,7 @@ fn main() {
     ntimes(3, || {              // evens & ends - few elements, fast
         let (n, elapsed) = timed(|| count_intersection(evens, ends));
         println!("{:.2}s evens & ends ({n} elts) [handwritten]", elapsed.as_secs_f32());
-        let (m, elapsed) = timed(|| elements(evens).join(elements(ends)).keys().count());
+        let (m, elapsed) = timed(|| elements(evens).join(elements(ends)).count());
         println!("{:.2}s evens & ends ({m} elts)", elapsed.as_secs_f32());
         assert!(n == m);
     });
@@ -199,7 +309,7 @@ fn main() {
     ntimes(3, || {              // evens & odds - no elements, slow
         let (n, elapsed) = timed(|| count_intersection(evens, odds));
         println!("{:.2}s evens & odds [handwritten]", elapsed.as_secs_f32());
-        let (m, elapsed) = timed(|| elements(evens).join(elements(odds)).keys().count());
+        let (m, elapsed) = timed(|| elements(evens).join(elements(odds)).count());
         println!("{:.2}s evens & odds", elapsed.as_secs_f32());
         assert!(n == 0);
         assert!(n == m);
@@ -211,14 +321,14 @@ fn main() {
         println!("{:.2}s evens & threes ({}M elts) [handwritten]",
                  elapsed.as_secs_f32(),
                  n / 1_000_000);
-        let (m, elapsed) = timed(|| elements(evens).join(elements(threes)).keys().count());
+        let (m, elapsed) = timed(|| elements(evens).join(elements(threes)).count());
         println!("{:.2}s evens & threes ({}M elts)", elapsed.as_secs_f32(), m / 1_000_000);
         assert!(n == m);
     });
 
     println!();
     ntimes(3, || {              // evens & odds & ends - no elements, fast
-        let (n, elapsed) = timed(|| elements(evens).join(elements(odds)).join(elements(ends)).keys().count());
+        let (n, elapsed) = timed(|| elements(evens).join(elements(odds)).join(elements(ends)).count());
         println!("{:.2}s evens & odds & ends", elapsed.as_secs_f32());
         assert!(n == 0);
     });
