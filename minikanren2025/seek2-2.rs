@@ -112,7 +112,7 @@ impl<S: Seek> Iterator for Keys<S> {
         };
         loop {
             match self.iter.seek(|x| bound.matches(x)) {
-                done@Know(Done) => { self.posn = done; return None; }
+                Know(Done) => { self.posn = Know(Done); return None; }
                 Have(k, _) => { self.posn = self.iter.seek(|x| x > k); return Some(k); }
                 Know(p) => { bound = p; }
             }
@@ -122,7 +122,6 @@ impl<S: Seek> Iterator for Keys<S> {
 
 
 // ---------- INNER JOIN ----------
-#[derive(Clone)]
 struct Join<X,Y>(X, Y);
 
 impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
@@ -150,7 +149,6 @@ impl<X: Seek, Y: Seek<Key=X::Key>> Seek for Join<X,Y> {
 
 
 // ---------- SORTED LISTS ----------
-#[derive(Clone)]
 struct Elements<'a, X> {
     elems: &'a [X],
     index: usize,
