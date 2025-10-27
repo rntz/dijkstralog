@@ -2,6 +2,14 @@
 %\usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 
+%% miniKanren 2025 formatting instructions
+\setcopyright{none}
+\copyrightyear{2025}
+\acmYear{2025}
+\acmDOI{}
+\usepackage{fancyhdr}
+%% miniKanren 2025 formatting continues before \begin{abstract}
+
 %\title{Monotonic, Bounded, Fair}
 %% GEB: EGB reference how?
 %\subtitle{miniKanren's power as inspiration; its limits as implementation}
@@ -12,7 +20,7 @@
 \title{Fair intersection of seekable iterators}
 
 \author{Michael Arntzenius}
-\email{rntz@berkeley.edu}
+\email{daekharel@gmail.com}
 \orcid{0009-0002-2234-2549}
 \affiliation{%
 	\institution{UC Berkeley}
@@ -84,6 +92,9 @@
 
 
 %% Packages & commands
+% NB. because of a bad interaction b/w minted3 and Python 3.14, I need to use a
+% python3.13 venv to compile this file now. ARGH.
+% see https://github.com/gpoore/minted/issues/463
 \usepackage{minted}
 \setminted{
   xleftmargin=1.5em,
@@ -114,6 +125,21 @@
 
 \begin{document}
 
+\settopmatter{printacmref=false}
+\settopmatter{printfolios=true}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+\pagestyle{fancy}
+\fancyfoot{}
+\fancyfoot[R]{\footnotesize\sffamily miniKanren'25}
+\fancypagestyle{firstfancy}{
+  \fancyhead{}
+  \fancyhead[R]{\small\sffamily miniKanren'25}
+  \fancyfoot{}
+}
+\makeatletter
+\let\@authorsaddresses\@empty
+\makeatother
+
 \begin{abstract}
   miniKanren's key semantic advance over Prolog is to implement a complete yet efficient search strategy, fairly interleaving execution between disjuncts.
   This fairness is accomplished by bounding how much work is done exploring one disjunct before switching to the next.
@@ -121,6 +147,8 @@
 \end{abstract}
 
 \maketitle
+
+\thispagestyle{firstfancy}
 
 
 \section{Our approach and its scope}
