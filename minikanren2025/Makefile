@@ -45,8 +45,11 @@ print-%:
 	ghc -Wincomplete-patterns -O2 $<
 
 %: %.rs
-	rustc -O $<
+	rustc -O -g $<
 
-.PHONY: run\:%
+.PHONY: run\:% sample\:%
 run\:%: %
 	./$<
+
+sample\:%: %
+	~/.cargo/bin/samply record ./$<
