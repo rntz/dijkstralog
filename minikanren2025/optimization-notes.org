@@ -38,3 +38,31 @@ InnerJoin.posn() gets called in an inner loop.
 To make it faster, ensure in InnerJoin(s,t) that t is always more advanced than s.
 
 Alternatively, make it even more like LFTJ by storing a bit of state that tells us which one is more advanced.
+
+* Rust optimization notes
+based on seek-minimal.rs
+there are at least TWO effects:
+
+if I #[inline(never)] fn gallop, then evens & odds handwritten matches my evens & odds implementation. but evens & threes is still faster handwritten, just not AS MUCH faster.
+
+if I #[inline(always)] fn gallop, evens & odds is faster handwritten than with iterators, and evens & threes gets EVEN faster handwritten vs iterators.
+
+GUESS 1: when gallop is inlined, it gets inlined twice handwritten but only once with iterators, and inlining twice lets the branch predictor specialize to which array I'm seeking in. (DUBIOUS: why wouldn't it get inlined twice in the iterator version?)
+
+GUESS 2: when gallop isn't inlined, the lack of "bumping" is slowing down the iterator version.
+CONFIRMED! I implemented bump() and it got faster. On evens & threes, with #[inline(never)] gallop:
+
+|                | evens & threes | evens & odds |
+|----------------+----------------+--------------|
+| handwritten    | 1.28s          | 1.73s        |
+| iters w/o bump |                |              |
+| iters w bump   |                |              |
+|----------------+----------------+--------------|
+| h/nobump       |                |              |
+| h/bump         |                |              |
+|----------------+----------------+--------------|
+
+  handwritten / iterators w/o bump    ~1.55x speedup
+  handwritten / iterators with bump   ~1.25x speedup
+
+but 1.25x is still a significant speedup. Hmmmm.
