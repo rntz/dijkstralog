@@ -119,6 +119,22 @@ struct State {
     npaths: usize,
 }
 
+fn initial_query(
+    edge_map: &HashMap<u32, Vec<u32>>,
+    edge_rev: &HashMap<u32, Vec<u32>>,
+) -> Vec<(u32, u32, u32)> {
+    let mut paths: Vec<(u32, u32, u32)> = Vec::new();
+    for (b, as_vec) in edge_rev.iter() {
+        let Some(cs_vec) = edge_map.get(b) else { continue };
+        for a in as_vec {
+            for c in cs_vec {
+                paths.push((*a, *b, *c))
+            }
+        }
+    }
+    return paths;
+}
+
 fn main() {
     let edges: Vec<(u32, u32)> = load_edges();
     let num_trials = match var("TRIALS") {
@@ -156,15 +172,7 @@ fn main() {
     // Find all 2-length paths.
     println!("\n# PHASE 1: Initial query: find all 2-edge paths.");
     let phase1 = Instant::now();
-    let mut paths: Vec<(u32, u32, u32)> = Vec::new();
-    for (b, as_vec) in edge_rev.iter() {
-        let Some(cs_vec) = edge_map.get(b) else { continue };
-        for a in as_vec {
-            for c in cs_vec {
-                paths.push((*a, *b, *c))
-            }
-        }
-    }
+    let paths: Vec<(u32, u32, u32)> = initial_query(&edge_map, &edge_rev);
     let phase1_secs = phase1.elapsed().as_secs_f32();
     println!("{phase1_secs:.2}s");
     println!("num paths {:13} {:5}M", paths.len(), paths.len() / 1_000_000);
@@ -181,7 +189,25 @@ fn main() {
 
     // These strategies merely count the number of paths found. This lets us more
     // accurately measure the difference between the strategies.
-    phase2("REWRITES ONLY", config, &state, phase2_rewrite_only);
+    let rewrite_state = phase2("REWRITES ONLY", config, &state, phase2_rewrite_only);
+    // Now try computing from scratch on state2.
+    if true {
+        println!();
+        println!("Recomputing paths from scratch after rewriting...");
+        let mut times_secs: Vec<f32> = Vec::new();
+        for _trial in 1..=config.num_trials {
+            let recompute = Instant::now();
+            let paths = initial_query(&rewrite_state.edge_map, &rewrite_state.edge_rev);
+            // uh oh! this isn't matching up!
+            println!("paths.len() {:11} {:5}M", paths.len(), paths.len() / 1_000_000);
+            times_secs.push(recompute.elapsed().as_secs_f32());
+        }
+        times_secs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        print!("times             ");
+        for time in times_secs.iter() { print!(" {time:.2}s"); }
+        println!();
+    }
+
     phase2("COUNT KRIS", config, &state, phase2_count_kris);
     phase2("COUNT TINY BATCH", config, &state, phase2_count_tiny_batch_delta);
     phase2("COUNT TUPLE DELTA", config, &state, phase2_count_tuple_delta);
@@ -284,10 +310,11 @@ fn phase2<F: Fn(&mut State, u32, u32, u32)>(
     if times_secs.len() == 1 {
         println!("time            {:7.2}s", times_secs[0]);
     } else {
-        print!("times              ");
-        for time in times_secs.iter() { print!("{time:.2}s "); }
+        times_secs.sort_by(|a,b| a.partial_cmp(b).unwrap()); // no NaNs, I hope!
+        print!("times             ");
+        for time in times_secs.iter() { print!(" {time:.2}s"); }
         println!();
-        println!("min time        {:7.2}s", times_secs.iter().min_by(|x, y| x.partial_cmp(y).unwrap()).unwrap());
+        // println!("min time        {:7.2}s", times_secs.iter().min_by(|x, y| x.partial_cmp(y).unwrap()).unwrap());
     }
     return state
 }
