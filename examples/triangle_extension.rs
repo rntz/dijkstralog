@@ -66,6 +66,7 @@ fn load_edges() -> Vec<(u32, u32)> {
     use std::fs::File;
     use std::path::Path;
     let path = Path::new("data/soc-LiveJournal1.txt");
+    println!("Reading from {:?}", path);
     let file = File::open(&path).expect("couldn't open soc-LiveJournal1.txt");
     let max_edges: Option<usize> = match var("EDGES") {
         Err(VarError::NotPresent) => Some(DEFAULT_MAX_EDGES), // default
