@@ -1,12 +1,14 @@
 This README was written as of 20 January 2026, d4a7cbb45ea3f1b9db4316e5044a972bbf716b8a, and may since be out of date.
 
+
 # What is this?
 
 An iterator interface and implementations of it that make it easy(-ish) to express worst-case optimal joins, called “WCOI” for “worst-case optimal iterators”. Related to [indexed streams](https://dl.acm.org/doi/abs/10.1145/3591268). The best currently available description of my particular approach is my miniKanren 2025 workshop paper [Fair intersection of seekable iterators](https://arxiv.org/abs/2510.26016v1) and [its talk](https://www.youtube.com/watch?v=-32fwqirjW8).
 
+
 # Directory & file guide
 
-- `src`: The Rust implementation. TODO DESCRIBE
+- `src`: The Rust implementation. See [Implementation](#implementation), below.
 
 - `examples`: Example programs. See [Examples](#examples), below.
 
@@ -15,6 +17,22 @@ An iterator interface and implementations of it that make it easy(-ish) to expre
 - `minikanren2025`: Stuff for my miniKanren 2025 paper [Fair intersection of seekable iterators](https://arxiv.org/abs/2510.26016v1). Also contains various attempts (`minikanren2025/*.{rs,hs}`) to optimize performance of seekable iterators by tweaking the interface.
 
 There are various `*.{hs,jl,rkt.py}` files in the root directory. These are mostly experiments with expressing worst-case optimal iterators in various languages. I started in Haskell so there are a lot of those. Probably the best one to read is `iters_alltogethernow.hs` or `iters_alltogethernow_minimal.hs`.
+
+
+# Implementation
+
+- `src/lib.rs`: The entry point.
+
+- `src/search.rs`: Implementations of various [galloping/exponential search](https://en.wikipedia.org/wiki/Exponential_search) strategies. Galloping search finds the index i an element should take in a sorted array of n elements in time O(log i). So it has the same O(log n) worst case as binary search, but performs much better if the element is near the start of the array. This makes it useful for adaptive set intersections.
+
+- `src/iter.rs`: The core `Seek` interface for worst-case optimal iterators, and implementations of it for simple data structures (mostly sorted vectors).
+
+- `src/macros.rs`: The convenience macros `relationize!` and `nest!`; see [Macros](#macros), below.
+
+- `src/lsm.rs`: Implements an LSM tree of sorted vectors and `Seek`able iterators over it. The core idea is taken from [this Frank McSherry blog post](https://github.com/frankmcsherry/blog/blob/master/posts/2025-06-03.md#data-oriented-design--columns) (search for ‘FactLSM’). The purpose is to have a sorted data structure with a reasonably efficient way to merge new sorted vectors into it. A B-tree variant would also have worked but this is simpler.
+
+- `src/seek2.rs` and `src/seek_token.rs`: Some so-far unused experiments with alternative `Seek` interfaces.
+
 
 # Examples
 
@@ -50,6 +68,7 @@ Many of these (but not all, sorry!) check the environment variable `EDGES` for h
 
 [LiveJournal]: https://snap.stanford.edu/data/soc-LiveJournal1.html
 [ca-HepPh]: https://snap.stanford.edu/data/ca-HepPh.html
+
 
 # Macros
 
