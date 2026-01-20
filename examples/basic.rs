@@ -9,7 +9,9 @@ use dijkstralog::iter::{
 
 // EXAMPLE 1: TRIES
 fn example1() {
-    let xys: &[(isize, &str)] = &[(1, "one"), (1, "wun"), (2, "two"), (2, "deux")];
+    let xys: &[(isize, &str)] = &[(1, "one"), (1, "wun"),
+                                  (2, "deux"), (2, "two")];
+    assert!(xys.is_sorted());
 
     // Iterate through the slices on the first component of the tuples.
     let mut it = ranges(xys, |t| t.0);
@@ -35,6 +37,7 @@ fn example1() {
 
 // EXAMPLE 2: TRIANGLE QUERY
 fn example2() {
+    // Rab, Sbc, Tac
     let r: &[(&str, isize)] = &[("a", 1), ("a", 2), ("b", 1), ("b", 2)];
     let s: &[(isize, &str)] = &[(1, "one"), (1, "wun"), (2, "deux"), (2, "two")];
     let t: &[(&str, &str)]  = &[("a", "one"), ("b", "deux"), ("mary", "mary")];
@@ -42,6 +45,11 @@ fn example2() {
     assert!(s.is_sorted());
     assert!(t.is_sorted());
 
+    // r_ab: Iter String (Iter Int Int)
+    // s_bc: Iter Int (Iter String Int)
+    // t_ac: Iter String (Iter String Int)
+    //
+    // triangle(a,b,c) = x*y*z :- r(a,b) = x, s(b,c) = y, t(a,c) = z.
     let mut r_ab =
         ranges(r, |t| t.0).map(|bs| ranges(bs, |t| t.1).map(|_| 2));
     let mut s_bc =
@@ -52,10 +60,9 @@ fn example2() {
     let rtrie: Vec<(_, Vec<_>)> = r_ab.clone().map(|bs| bs.collect()).collect();
     println!("rtrie: {rtrie:?}");
 
-    // Let's plan a triangle query!
-    // this requires we pay obeisance to the borrow checking gods.
-    // I worry about what the closures look like...
-    // I should try disassembly, but it might be too big to understand.
+    // R(a,b) and S(b,c) and T(a,c)
+    // Let's run this triangle query!
+    // first, we pay obeisance to the borrow checking gods.
     let triangle_it =
         r_ab.join(t_ac).map(move |(r_b, t_c)| {
             r_b.join(s_bc.clone()).map(move |(r, s_c)| {
