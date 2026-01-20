@@ -20,10 +20,8 @@ There are various `*.{hs,jl,rkt.py}` files in the root directory. These are most
 
 Many examples require [SNAP datasets](https://snap.stanford.edu/data/) to run, and expect it to be in a `data/` directory. Because the iterators are super slow without optimization and inlining, these examples generally won't run to completion in dev mode; use `cargo run --release --example NAME`. Examples that don't use any dataset and run without `--release`:
 
-- `basic.rs`: Basic usage examples. Doesn't require any dataset and can run to completion without `--release`.
-
+- `basic.rs`: Basic usage examples.
 - `macros.rs`: Examples of some simple macros. See [Macros](#macros).
-
 - `gallop.rs`: I've forgotten what this does.
 
 **SNAP dataset examples:**
