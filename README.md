@@ -1,14 +1,20 @@
 This README was written as of 20 January 2026, d4a7cbb45ea3f1b9db4316e5044a972bbf716b8a, and may since be out of date.
 
-# Guide to interesting files and directories
+# What is this?
+
+An iterator interface and implementations of it that make it easy(-ish) to express worst-case optimal joins. Related to [indexed streams](https://dl.acm.org/doi/abs/10.1145/3591268). The best currently available description of my particular approach is my miniKanren 2025 workshop paper [Fair intersection of seekable iterators](https://arxiv.org/abs/2510.26016v1) and [its talk](https://www.youtube.com/watch?v=-32fwqirjW8).
+
+# Directory & file guide
 
 - `src`: The Rust implementation. TODO DESCRIBE
 
 - `examples`: Example programs. See [Examples](#examples), below.
 
-- `macros`: A subpackage containing some not-yet-working procedural macros for writing Datalog-style queries and rules. See [Macros](#macros), below. See `macros/src/lib.rs`.
+- `macros`: A subpackage containing some not-yet-working procedural macros for writing Datalog-style queries and rules. See [Macros](#macros), below.
 
-- `minikanren2025`: Stuff for my miniKanren 2025 paper [Fair intersection of seekable iterators](https://arxiv.org/abs/2510.26016v1) and [talk](https://www.youtube.com/watch?v=-32fwqirjW8).
+- `minikanren2025`: Stuff for my miniKanren 2025 paper [Fair intersection of seekable iterators](https://arxiv.org/abs/2510.26016v1).
+
+There are various miscellaneous `*.{hs,jl,rkt.py}` files in the root directory. These are mostly experiments with expressing worst-case optimal iterators
 
 # Examples
 
