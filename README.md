@@ -34,9 +34,9 @@ Many of these (but not all, sorry!) check the environment variable `EDGES` for h
 
 - `triangle-fast.rs`: Handcoded triangle finding loop (worst-case optimal but _not_ using WCOIs) in the [LiveJournal][] dataset.
 
-- `trans.rs`, `trans2.rs`, `trans2_parallel.rs`, `trans3.rs`: Transitive closure implementations. These mostly default to the [High Energy Physics Phenomenology citation network (ca-HepPh)][ca-HepPh], but you can provide an alternative file as their first command-line argument. Transitive closure is much more explosive than triangle counting, so beware of giving these too many edges! TODO: describe their differences.
+- `trans.rs`, `trans2.rs`, `trans2_parallel.rs`, `trans3.rs`: Transitive closure implementations. These mostly default to the [High Energy Physics Phenomenology citation network (ca-HepPh)][ca-HepPh], but you can provide an alternative file as their first command-line argument. Transitive closure is much more explosive than triangle counting, so beware of giving these too many edges! `trans.rs` is the most straightforward implementation. `trans2` implements a trick to speed up a re-sorting step necessary when projecting away the intermediate vertex when joining new paths against edges. `trans2_parallel` additionally parallelizes the inner loop using [Rayon](https://docs.rs/rayon/latest/rayon/) by partitioning the delta; this can give a big speedup on multicore machines. `trans3` uses a slightly different diff minimization strategy (not a huge effect).
 
-- `trans_rev.rs`, `trans_rev2.rs`: Older variants of the transitive closure code with a slightly different strategy (indexing in a different order). They use [LiveJournal][].
+- `trans_rev.rs`, `trans_rev2.rs`: Older variants of the transitive closure code with a slightly different strategy (indexing in a different order). Seem to perform worse although I don't know why. They use [LiveJournal][].
 
 - `trans_hash.rs`: Transitive closure of [LiveJournal][] using hashtables and a simple tuple-at-a-time worklist rather than WCOIs.
 
