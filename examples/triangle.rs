@@ -22,6 +22,7 @@
 // We can partition edges into A,B by hash-bucketing.
 
 use std::io::prelude::*;
+use std::time::Instant;
 
 use dijkstralog::iter;
 use dijkstralog::iter::{Seek, ranges, tuples, Bound};
@@ -95,6 +96,8 @@ fn main() {
     let edges: Vec<(u32, u32)> = load_edges();
     let edges: &[(u32, u32)] = &edges;
 
+    let beginning = Instant::now();
+
     // FINDING DIRECTED ACYCLIC TRIANGLES
     //
     // Finds triples (a,b,c) satisfying:
@@ -149,6 +152,13 @@ fn main() {
     // over-counting edges by considering only those from lower- to strictly
     // higher-numbered nodes. This also excludes self-edges, enforcing
     // distinctness.
+    //
+    // As a Datalog program:
+    //
+    // edge_directed(a,b).
+    //
+    // edge_symmetric(a,b) :- edge_directed(a,b), a < b.
+    // edge_symmetric(a,b) :- edge_directed(b,a), a < b.
     if true {
         println!("Undirected triangle query, Datalog-ish approach.");
 
@@ -185,6 +195,8 @@ fn main() {
             .collect();
         println!("done.");
 
+        // a, b, c
+        // R(a,b) R(b,c) R(a,c)
         // Now, acyclic triangle query over this undirected edge trie.
         let r__ = ranges(&unique_edges, |t| t.0).map(|ts| tuples(ts, |t| t.1));
         let mut found: usize = 0;
@@ -266,4 +278,6 @@ fn main() {
         println!("FOUND THEM ALL");
         dbg!(found);
     }
+
+    println!("Finding triangles (excluding loading, including index construction) took {:.2}s.", beginning.elapsed().as_secs_f32());
 }
