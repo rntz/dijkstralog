@@ -202,8 +202,11 @@ fn main() {
             println!("paths.len() {:11} {:5}M", paths.len(), paths.len() / 1_000_000);
             times_secs.push(recompute.elapsed().as_secs_f32());
         }
-        times_secs.sort_by(|a, b| a.partial_cmp(b).unwrap());
         print!("times             ");
+        for time in times_secs.iter() { print!(" {time:.2}s"); }
+        println!();
+        times_secs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        print!("times (sorted)    ");
         for time in times_secs.iter() { print!(" {time:.2}s"); }
         println!();
     }
@@ -220,6 +223,12 @@ fn main() {
     if false {            // same results/no duplicates bug checks
         // Test that all outputs agree and there are no duplicate paths.
         // This is expensive, but a good check for bugs.
+        println!();
+        println!("Checking edge vectors are equal...");
+        assert!(tuple_state.edges == batch_state.edges);
+        assert!(kris_state.edges == tuple_state.edges);
+        println!("All edge vectors equal.");
+
         println!();
         println!("Sorting...");
         kris_state.paths.sort(); println!("kris sorted");
@@ -290,6 +299,7 @@ fn phase2<F: Fn(&mut State, u32, u32, u32)>(
             // "Fibonacci hashing", kinda. Except we're still using modulo.
             // https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/
             let edge_idx = iter.wrapping_mul(11400714819323198485) % state.edges.len();
+            // let edge_idx = iter % state.edges.len();
             let (a, c) = state.edges[edge_idx];
             // Create a new vertex b.
             state.max_vertex += 1;
@@ -310,11 +320,13 @@ fn phase2<F: Fn(&mut State, u32, u32, u32)>(
     if times_secs.len() == 1 {
         println!("time            {:7.2}s", times_secs[0]);
     } else {
-        times_secs.sort_by(|a,b| a.partial_cmp(b).unwrap()); // no NaNs, I hope!
         print!("times             ");
         for time in times_secs.iter() { print!(" {time:.2}s"); }
         println!();
-        // println!("min time        {:7.2}s", times_secs.iter().min_by(|x, y| x.partial_cmp(y).unwrap()).unwrap());
+        times_secs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        print!("times (sorted)    ");
+        for time in times_secs.iter() { print!(" {time:.2}s"); }
+        println!();
     }
     return state
 }
