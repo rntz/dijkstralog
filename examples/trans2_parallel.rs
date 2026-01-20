@@ -81,11 +81,14 @@ fn load_edges_from<R: std::io::Read>(source: R, max_edges: Option<usize>) -> Vec
 const DEBUG: bool = false;
 
 fn main() {
+    let load = Instant::now();
     let edges: Vec<(u32, u32)> = load_edges();
     let edges = edges.as_slice();
     if DEBUG {
         println!("edges: {:?}", edges);
     }
+    let load_ns = load.elapsed().as_nanos();
+    let compute = Instant::now();
 
     // trans a b <- edge a b
     // trans a c <- trans a b, edge b c
@@ -262,6 +265,7 @@ fn main() {
         delta = Layer::from_sorted(new_paths);
     }
 
+    let compute_ns = compute.elapsed().as_nanos();
     println!();
     // The sum of layer sizes should be precisely the # of paths, since we
     // minify our deltas.
@@ -275,19 +279,23 @@ fn main() {
     println!(" lsm update {:6}ms", total_lsm_update_ns / 1_000_000);
     println!("     minify {:6}ms", total_minify_ns / 1_000_000);
     println!("concatenate {:6}ms", total_concatenate_ns / 1_000_000);
+    println!();
+    println!("       load {:6}ms", load_ns / 1_000_000);
+    println!("    compute {:6}ms", compute_ns / 1_000_000);
 
-    // print_flush!("Counting distinct paths... ");
-    // let npaths = trans.iter().count();
-    // println!("found {npaths} ≈ {:.0e}", npaths);
+    print_flush!("Counting distinct paths... ");
+    let counting = Instant::now();
+    let npaths = trans.iter().count();
+    println!("found {npaths} ≈ {:.0e} in {:6}ms",
+             npaths,
+             counting.elapsed().as_nanos() / 1_000_000,
+    );
 
-    // // Comment the rest out if you don't care about just getting one big vector.
-    // print!("Merging all paths into one vector... ");
-    // std::io::stdout().flush().unwrap();
-    // let paths: Vec<(u32, u32)> = trans.iter().map(|x| x.0).collect();
-    // println!("done.");
-    // println!("Found {} = {:.2e} paths", paths.len(), paths.len());
-    // if DEBUG {
-    //     println!("paths: {:?}", paths.as_slice());
-    // }
-
+    // WHY IS THIS SO MUCH FASTER THAN COUNTING?!?!?!
+    println!("Compressing...");
+    let compressing = Instant::now();
+    let trans = trans.into_layer();
+    let npaths = trans.len();
+    println!("found {npaths} ≈ {npaths:.0e} total paths in {:6}ms.",
+             compressing.elapsed().as_nanos() / 1_000_000);
 }
