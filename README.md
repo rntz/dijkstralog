@@ -33,6 +33,8 @@ There are various `*.{hs,jl,rkt.py}` files in the root directory. These are most
 
 - `src/seek2.rs` and `src/seek_token.rs`: Some so-far unused experiments with alternative `Seek` interfaces.
 
+- `src/negation.rs`: Experimental, untested antijoin/negation support.
+
 
 # Examples
 
