@@ -44,7 +44,10 @@ Many examples require [SNAP datasets](https://snap.stanford.edu/data/) to run, a
 - `macros.rs`: Examples of some simple macros. See [Macros](#macros).
 - `gallop.rs`: I've forgotten what this does.
 
-**SNAP dataset examples:**
+## SNAP dataset examples
+
+[LiveJournal]: https://snap.stanford.edu/data/soc-LiveJournal1.html
+[ca-HepPh]: https://snap.stanford.edu/data/ca-HepPh.html
 
 Many of these (but not all, sorry!) check the environment variable `EDGES` for how many edges to read from their dataset (often the whole dataset is too large), picking some default if not given. They accept simple suffixes: `k` for one thousand, `M` or `m` for one million, e.g. `EDGES=12m cargo run --release --example triangle`. Probably the most interesting examples for benchmarking purposes are `triangle.rs` for triangle counting, the `trans{,2,2_parallel}.rs` family for transitive closure, and `min_reachable` if you're interested in aggregations.
 
@@ -66,10 +69,9 @@ Many of these (but not all, sorry!) check the environment variable `EDGES` for h
 
 - `triangle_extension.rs`: A graph rewriting workload. Uses the [LiveJournal dataset][LiveJournal]. TODO: more details.
 
-**Graspan dataset examples:** `graspan.rs` and `graspan2.rs` need a Graspan dataset. TODO: describe how to get this, if it's still possible. TODO: describe what these do. They're simple static analyses (basically reachability) based on a Frank McSherry blog post.
+## Graspan dataset examples
 
-[LiveJournal]: https://snap.stanford.edu/data/soc-LiveJournal1.html
-[ca-HepPh]: https://snap.stanford.edu/data/ca-HepPh.html
+`graspan.rs` and `graspan2.rs` need a Graspan dataset. TODO: describe how to get this, if it's still possible. TODO: describe what these do. They're simple static analyses (basically reachability) based on a Frank McSherry blog post.
 
 
 # Macros
