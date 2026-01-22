@@ -5,6 +5,17 @@ This README was written as of 20 January 2026, d4a7cbb45ea3f1b9db4316e5044a972bb
 
 An iterator interface and implementations of it that make it easy(-ish) to express worst-case optimal joins, called “WCOI” for “worst-case optimal iterators”. Related to [indexed streams](https://dl.acm.org/doi/abs/10.1145/3591268). The best currently available description of my particular approach is my miniKanren 2025 workshop paper [Fair intersection of seekable iterators](https://arxiv.org/abs/2510.26016v1) and [its talk](https://www.youtube.com/watch?v=-32fwqirjW8).
 
+## Why “Dijkstralog”?
+
+The original idea for this project was quite different: to build a Datalog where facts have priorities in ℕ ⊎ {∞}, where ∞ means “false”, and execution prioritizes investigating the consequences of facts with lower priority. (This is Datalog with semiring provenance in the min-plus (‘tropical’) semiring.) In particular, I wanted to experiment with *interpolating* between:
+
+1. Tuple-at-a-time execution, which always picks the lowest priority fact not yet investigated. This generalizes Dijkstra’s shortest paths algorithm and discovers facts in order of priority. But, it’s by definition single-threaded (tuple at a time), with no data parallelism.
+
+2. Batched execution, which examines all newly learned facts in parallel (like normal batched seminaive Datalog). This exposes maximal parallelism but is totally unprioritized.
+
+The middle point would be: take the *best N facts* for some configurable (or dynamic?) N. This allows parallelism but still prioritizes work. For N=1 it’s Dijkstra’s algorithm, for N=∞ it’s batched execution.
+
+I still think this idea is cool (if you wanna work on it together, [reach out to me!](https://www.rntz.net)), but I got sidetracked into trying to build a worst-case optimal Datalog, and then further sidetracked when I realized there was a nice seekable iterator interface for worst-case optimal joins.
 
 # Directory & file guide
 
