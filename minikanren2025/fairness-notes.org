@@ -1,0 +1,74 @@
+* quotes informally defining fairness
+
+Hansen 1973 Operating System Principles
+the scheduler "must not delay a process indefinitely in favor of more urgent processes."
+
+Owicki & Lamport 1982, Proving Liveness Properties of Concurrent Programs
+“Fairness means that every process gets a chance to make progress, regardless of what other processes do.”
+
+Andrews & Schneider 1983, Concepts and Notations for Concurrent Programming
+“In general, a synchronization mechanism is fair if no process is delayed forever, waiting for a condition that occurs infinitely often; it is bounded fair if there exists an upper bound on how long a process will be delayed waiting for a condition that occurs infinitely often.”
+
+Völzer & Varacca 2012, Defining Fairness in Reactive and Concurrent Systems
+“A fairness assumption usually stipulates that if a particular behavior of the system is sufficiently often possible during a given run of the system, then that behavior occurs sufficiently often in that run.”
+
+* liveness
+
+Defining Liveness
+
+https://www.cs.cornell.edu/fbs/publications/DefLiveness.pdf
+Bowen Alpern and Fred B. Schneider, 1985
+Information Processing Letters
+
+* fairness
+
+** Volzer & Varacca 2012
+"Defining Fairness in Reactive and Concurrent Systems"
+https://dl.acm.org/doi/pdf/10.1145/2220357.2220360
+
+In contrast to other important classes of temporal properties, such as safety and
+liveness [Alpern and Schneider 1985; Lamport 1977], no general characterization of
+fairness has so far been proposed, that is, there is no agreed definition of what the class of all fairness properties is.
+
+** Lamport 2000
+"Fairness and hyperfairness"
+https://lamport.azurewebsites.net/pubs/lamport-fairness.pdf
+
+Abstract: The notion of fairness in trace-based formalisms is examined. It is argued
+that, in general, **fairness means machine closure**. The notion of hyperfairness
+introduced by Attie, Francez, and Grumberg is generalized to arbitrary action
+systems. Also examined are the fairness criteria proposed by Apt, Francez,
+and Katz.
+
+** Hansen 1973
+"Operating System Principles"
+http://pascal.hansotten.com/uploads/pbh/Hansen%20-%20Operating%20System%20Principles%20(1973).pdf
+p84 (p100 in the pdf system)
+
+Finally, (e) the priority rule used to select a delayed process must be fair: It must not delay a process indefinitely in favor of more urgent processes. An example of a fair scheduling policy is first-come, first-served, which selects processes in their order of arrival; an unfair policy is last-come, first-served, which favors the latest request.
+
+** Dijkstra 1971
+Hierarchical Ordering of Sequential Processes
+https://link.springer.com/content/pdf/10.1007/BF00289519.pdf
+
+p6:
+"We have made the most modest assumption we could think of, that [each process] is guaranteed to proceed with some unknown, but finite speed."
+
+"We have made the most modest assumption we could think of, viz. that [differential sequential processes] would proceed with speed ratios, unknown but for the fact that the speed ratios would differ from zero. I.e. each process (when logically allowed to proceed, see below) is guaranteed to proceed with some unknown, but finite speed."
+
+** Lehmann, Pnueli, Stavi 1981
+"Impartiality, justice and fairness: The ethics of concurrent termination"
+https://link.springer.com/content/pdf/10.1007/3-540-10843-2_22.pdf
+
+n processes, running transition functions fᵢ, i∈[1,n].
+sequence of choices iⱼ of which processor f_iⱼ to run.
+
+"impartial": ∀k∈[1..n]. f_k appears infinitely many times in sequence
+useless when transitions functions can be inactive/inapplicable/unfireable
+
+"just": finite, or every transition which is eventually continuously enabled is taken infinitely often
+not strong enough: what if not *continuously* enabled?
+
+"fair": finite, or every transition which is enabled infinitely often is taken infinitely often
+
+these distinctions aren't entirely useful to us.
